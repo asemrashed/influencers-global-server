@@ -30,6 +30,28 @@
         ],
         "parameters": [
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque; pass `nextCursor` from the previous page",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
             "name": "taskType",
             "in": "query",
             "required": false,
@@ -60,92 +82,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "taskType": {
-                        "type": "string",
-                        "enum": [
-                          "INBOX_CLASSIFY",
-                          "INBOX_SUMMARIZE",
-                          "REPLY_DRAFT",
-                          "MEETING_SCORE",
-                          "LEAD_DETECT",
-                          "GROWTH_INSIGHT"
-                        ]
-                      },
-                      "inputData": {
-                        "type": "object",
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "additionalProperties": {}
-                      },
-                      "outputData": {
-                        "type": "object",
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "additionalProperties": {}
-                      },
-                      "approvalLevel": {
-                        "type": "string",
-                        "enum": [
-                          "ALWAYS_HUMAN",
-                          "DEFAULT_HUMAN",
-                          "AUTOMATIC"
-                        ]
-                      },
-                      "approvedById": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "approvedAt": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "rejectionReason": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "executedAt": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "updatedAt": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "taskType",
-                      "inputData",
-                      "outputData",
-                      "approvalLevel",
-                      "approvedById",
-                      "approvedAt",
-                      "rejectionReason",
-                      "executedAt",
-                      "createdAt",
-                      "updatedAt"
-                    ],
-                    "additionalProperties": false
-                  }
+                  "$ref": "#/components/schemas/AiActionPage"
                 }
               }
             }
@@ -5047,6 +4984,28 @@
         ],
         "parameters": [
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque; pass `nextCursor` from the previous page",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
             "name": "status",
             "in": "query",
             "required": false,
@@ -5075,86 +5034,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "email": {
-                        "type": "string",
-                        "format": "email"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "phone": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "company": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "notes": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "LEAD",
-                          "ACTIVE",
-                          "INACTIVE",
-                          "BLOCKED"
-                        ]
-                      },
-                      "totalSpentCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "ordersCount": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "assignedUserId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "updatedAt": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "email",
-                      "name",
-                      "phone",
-                      "company",
-                      "notes",
-                      "status",
-                      "totalSpentCents",
-                      "ordersCount",
-                      "assignedUserId",
-                      "createdAt",
-                      "updatedAt"
-                    ],
-                    "additionalProperties": false
-                  }
+                  "$ref": "#/components/schemas/CustomerPage"
                 }
               }
             }
@@ -6203,6 +6083,28 @@
         ],
         "parameters": [
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque; pass `nextCursor` from the previous page",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
             "name": "category",
             "in": "query",
             "required": false,
@@ -6225,84 +6127,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "campaignId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "title": {
-                        "type": "string"
-                      },
-                      "category": {
-                        "type": "string"
-                      },
-                      "amountCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "expectedAt": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "receivedAt": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "source": {
-                        "type": "string",
-                        "enum": [
-                          "SYNCED",
-                          "MANUAL"
-                        ]
-                      },
-                      "reference": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "notes": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "updatedAt": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "campaignId",
-                      "title",
-                      "category",
-                      "amountCents",
-                      "expectedAt",
-                      "receivedAt",
-                      "source",
-                      "reference",
-                      "notes",
-                      "createdAt",
-                      "updatedAt"
-                    ],
-                    "additionalProperties": false
-                  }
+                  "$ref": "#/components/schemas/EarningEntryPage"
                 }
               }
             }
@@ -6588,6 +6413,28 @@
         ],
         "parameters": [
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque; pass `nextCursor` from the previous page",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
             "name": "status",
             "in": "query",
             "required": false,
@@ -6617,226 +6464,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "invoiceNumber": {
-                        "type": "string"
-                      },
-                      "campaignId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "clientName": {
-                        "type": "string"
-                      },
-                      "clientEmail": {
-                        "type": "string",
-                        "format": "email"
-                      },
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "DRAFT",
-                          "ISSUED",
-                          "PARTIALLY_PAID",
-                          "PAID",
-                          "CANCELLED"
-                        ]
-                      },
-                      "issueDate": {
-                        "type": "string"
-                      },
-                      "dueDate": {
-                        "type": "string"
-                      },
-                      "subtotalCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "taxCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "totalCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "paidCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "notes": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "createdById": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "milestones": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "invoiceId": {
-                              "type": "string"
-                            },
-                            "title": {
-                              "type": "string"
-                            },
-                            "amountCents": {
-                              "type": "integer",
-                              "minimum": -9007199254740991,
-                              "maximum": 9007199254740991
-                            },
-                            "dueDate": {
-                              "type": "string"
-                            },
-                            "status": {
-                              "type": "string",
-                              "enum": [
-                                "PENDING",
-                                "IN_PROGRESS",
-                                "COMPLETED",
-                                "PAID"
-                              ]
-                            },
-                            "completedAt": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "createdAt": {
-                              "type": "string"
-                            },
-                            "updatedAt": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "invoiceId",
-                            "title",
-                            "amountCents",
-                            "dueDate",
-                            "status",
-                            "completedAt",
-                            "createdAt",
-                            "updatedAt"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "payments": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "invoiceId": {
-                              "type": "string"
-                            },
-                            "amountCents": {
-                              "type": "integer",
-                              "minimum": -9007199254740991,
-                              "maximum": 9007199254740991
-                            },
-                            "paidAt": {
-                              "type": "string"
-                            },
-                            "paymentMethod": {
-                              "type": "string",
-                              "enum": [
-                                "CASH_ON_DELIVERY",
-                                "MANUAL_BANK_TRANSFER",
-                                "OTHER_OFFLINE"
-                              ]
-                            },
-                            "reference": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "SYNCED",
-                                "MANUAL"
-                              ]
-                            },
-                            "notes": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "createdAt": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "invoiceId",
-                            "amountCents",
-                            "paidAt",
-                            "paymentMethod",
-                            "reference",
-                            "source",
-                            "notes",
-                            "createdAt"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "updatedAt": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "invoiceNumber",
-                      "campaignId",
-                      "clientName",
-                      "clientEmail",
-                      "status",
-                      "issueDate",
-                      "dueDate",
-                      "subtotalCents",
-                      "taxCents",
-                      "totalCents",
-                      "paidCents",
-                      "notes",
-                      "createdById",
-                      "createdAt",
-                      "updatedAt"
-                    ],
-                    "additionalProperties": false
-                  }
+                  "$ref": "#/components/schemas/InvoicePage"
                 }
               }
             }
@@ -11266,6 +10894,28 @@
         ],
         "parameters": [
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque; pass `nextCursor` from the previous page",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
             "name": "status",
             "in": "query",
             "required": false,
@@ -11296,335 +10946,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "orderNumber": {
-                        "type": "string"
-                      },
-                      "customerId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "customerEmail": {
-                        "type": "string",
-                        "format": "email"
-                      },
-                      "customerName": {
-                        "type": "string"
-                      },
-                      "customerPhone": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "shippingAddress": {
-                        "type": "object",
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "additionalProperties": {}
-                      },
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "PENDING",
-                          "PAID",
-                          "FULFILLED",
-                          "DELIVERED",
-                          "CANCELLED",
-                          "REFUNDED"
-                        ]
-                      },
-                      "paymentStatus": {
-                        "type": "string",
-                        "enum": [
-                          "UNPAID",
-                          "PAID",
-                          "PARTIALLY_REFUNDED",
-                          "REFUNDED",
-                          "FAILED"
-                        ]
-                      },
-                      "paymentMethod": {
-                        "type": "string",
-                        "enum": [
-                          "CASH_ON_DELIVERY",
-                          "MANUAL_BANK_TRANSFER",
-                          "OTHER_OFFLINE"
-                        ]
-                      },
-                      "paymentDetails": {
-                        "anyOf": [
-                          {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {}
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "promoCodeId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "subtotalCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "discountCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "shippingCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "totalCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "paidCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "refundedCents": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "assignedUserId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "items": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "orderId": {
-                              "type": "string"
-                            },
-                            "variantId": {
-                              "type": "string"
-                            },
-                            "title": {
-                              "type": "string"
-                            },
-                            "sku": {
-                              "type": "string"
-                            },
-                            "quantity": {
-                              "type": "integer",
-                              "exclusiveMinimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "unitPriceCents": {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "totalPriceCents": {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "createdAt": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "orderId",
-                            "variantId",
-                            "title",
-                            "sku",
-                            "quantity",
-                            "unitPriceCents",
-                            "totalPriceCents",
-                            "createdAt"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "shipments": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "orderId": {
-                              "type": "string"
-                            },
-                            "carrier": {
-                              "type": "string"
-                            },
-                            "trackingNumber": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "status": {
-                              "type": "string"
-                            },
-                            "shippedAt": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "deliveredAt": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "notes": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "createdAt": {
-                              "type": "string"
-                            },
-                            "updatedAt": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "orderId",
-                            "carrier",
-                            "trackingNumber",
-                            "status",
-                            "shippedAt",
-                            "deliveredAt",
-                            "notes",
-                            "createdAt",
-                            "updatedAt"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "returns": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "orderId": {
-                              "type": "string"
-                            },
-                            "status": {
-                              "type": "string",
-                              "enum": [
-                                "REQUESTED",
-                                "APPROVED",
-                                "REJECTED",
-                                "RECEIVED",
-                                "RESTOCKED"
-                              ]
-                            },
-                            "reason": {
-                              "type": "string"
-                            },
-                            "restockResellable": {
-                              "type": "boolean"
-                            },
-                            "decisionNotes": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "decidedAt": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "createdAt": {
-                              "type": "string"
-                            },
-                            "updatedAt": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "orderId",
-                            "status",
-                            "reason",
-                            "restockResellable",
-                            "decisionNotes",
-                            "decidedAt",
-                            "createdAt",
-                            "updatedAt"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "updatedAt": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "orderNumber",
-                      "customerId",
-                      "customerEmail",
-                      "customerName",
-                      "customerPhone",
-                      "shippingAddress",
-                      "status",
-                      "paymentStatus",
-                      "paymentMethod",
-                      "paymentDetails",
-                      "promoCodeId",
-                      "subtotalCents",
-                      "discountCents",
-                      "shippingCents",
-                      "totalCents",
-                      "paidCents",
-                      "refundedCents",
-                      "assignedUserId",
-                      "createdAt",
-                      "updatedAt"
-                    ],
-                    "additionalProperties": false
-                  }
+                  "$ref": "#/components/schemas/OrderPage"
                 }
               }
             }
@@ -22457,7 +21779,7 @@
       "post": {
         "operationId": "storeCheckout",
         "summary": "Storefront checkout / order creation",
-        "description": "Public: Public storefront category catalog",
+        "description": "Public: Public customer shopping cart checkout",
         "tags": [
           "Storefront"
         ],
@@ -22474,35 +21796,68 @@
                 "properties": {
                   "customerEmail": {
                     "type": "string",
+                    "maxLength": 254,
                     "format": "email"
                   },
                   "customerName": {
                     "type": "string",
-                    "minLength": 1
+                    "minLength": 1,
+                    "maxLength": 100
                   },
                   "customerPhone": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 50
                   },
                   "shippingAddress": {
                     "type": "object",
-                    "propertyNames": {
-                      "type": "string"
+                    "properties": {
+                      "street": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "city": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "state": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "postalCode": {
+                        "type": "string",
+                        "maxLength": 30
+                      },
+                      "country": {
+                        "type": "string",
+                        "minLength": 2,
+                        "maxLength": 100
+                      }
                     },
+                    "required": [
+                      "street",
+                      "city",
+                      "country"
+                    ],
                     "additionalProperties": {}
                   },
                   "items": {
                     "minItems": 1,
+                    "maxItems": 100,
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
                         "variantId": {
-                          "type": "string"
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
                         },
                         "quantity": {
                           "type": "integer",
                           "exclusiveMinimum": 0,
-                          "maximum": 9007199254740991
+                          "maximum": 1000
                         }
                       },
                       "required": [
@@ -22512,7 +21867,8 @@
                     }
                   },
                   "promoCode": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 50
                   },
                   "paymentMethod": {
                     "default": "CASH_ON_DELIVERY",
@@ -22524,7 +21880,8 @@
                     ]
                   },
                   "idempotencyKey": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 100
                   }
                 },
                 "required": [
@@ -22920,7 +22277,7 @@
       "get": {
         "operationId": "listStoreProducts",
         "summary": "List storefront products",
-        "description": "Public: Public storefront category catalog",
+        "description": "Public: Public storefront product catalog",
         "tags": [
           "Storefront"
         ],
@@ -22929,6 +22286,28 @@
         },
         "security": [],
         "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque; pass `nextCursor` from the previous page",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
           {
             "name": "categoryId",
             "in": "query",
@@ -22952,111 +22331,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "slug": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "description": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "categoryId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "isActive": {
-                        "type": "boolean"
-                      },
-                      "imageIds": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "variants": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "productId": {
-                              "type": "string"
-                            },
-                            "sku": {
-                              "type": "string"
-                            },
-                            "title": {
-                              "type": "string"
-                            },
-                            "priceCents": {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "stock": {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "isActive": {
-                              "type": "boolean"
-                            },
-                            "createdAt": {
-                              "type": "string"
-                            },
-                            "updatedAt": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "productId",
-                            "sku",
-                            "title",
-                            "priceCents",
-                            "stock",
-                            "isActive",
-                            "createdAt",
-                            "updatedAt"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "updatedAt": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "slug",
-                      "name",
-                      "description",
-                      "categoryId",
-                      "isActive",
-                      "imageIds",
-                      "createdAt",
-                      "updatedAt"
-                    ],
-                    "additionalProperties": false
-                  }
+                  "$ref": "#/components/schemas/ProductPage"
                 }
               }
             }
@@ -25674,6 +24949,28 @@
         ],
         "parameters": [
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque; pass `nextCursor` from the previous page",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
             "name": "ruleId",
             "in": "query",
             "required": false,
@@ -25717,91 +25014,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "ruleId": {
-                        "type": "string"
-                      },
-                      "trigger": {
-                        "type": "string",
-                        "enum": [
-                          "INBOX_MESSAGE_RECEIVED",
-                          "ORDER_CREATED",
-                          "MEETING_REQUESTED",
-                          "PROPOSAL_RECEIVED",
-                          "LEAD_CREATED"
-                        ]
-                      },
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "SUCCESS",
-                          "FAILED",
-                          "PENDING_APPROVAL",
-                          "REJECTED"
-                        ]
-                      },
-                      "payload": {
-                        "type": "object",
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "additionalProperties": {}
-                      },
-                      "executionResult": {
-                        "anyOf": [
-                          {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {}
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "errorMessage": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "retriesCount": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "startedAt": {
-                        "type": "string"
-                      },
-                      "completedAt": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "ruleId",
-                      "trigger",
-                      "status",
-                      "payload",
-                      "executionResult",
-                      "errorMessage",
-                      "retriesCount",
-                      "startedAt",
-                      "completedAt"
-                    ],
-                    "additionalProperties": false
-                  }
+                  "$ref": "#/components/schemas/WorkflowRunPage"
                 }
               }
             }
@@ -26153,6 +25366,107 @@
   },
   "components": {
     "schemas": {
+      "AiActionPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "taskType": {
+                  "type": "string",
+                  "enum": [
+                    "INBOX_CLASSIFY",
+                    "INBOX_SUMMARIZE",
+                    "REPLY_DRAFT",
+                    "MEETING_SCORE",
+                    "LEAD_DETECT",
+                    "GROWTH_INSIGHT"
+                  ]
+                },
+                "inputData": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "outputData": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "approvalLevel": {
+                  "type": "string",
+                  "enum": [
+                    "ALWAYS_HUMAN",
+                    "DEFAULT_HUMAN",
+                    "AUTOMATIC"
+                  ]
+                },
+                "approvedById": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "approvedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rejectionReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "executedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "taskType",
+                "inputData",
+                "outputData",
+                "approvalLevel",
+                "approvedById",
+                "approvedAt",
+                "rejectionReason",
+                "executedAt",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "description": "Absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
       "AuditLog": {
         "type": "object",
         "properties": {
@@ -26566,6 +25880,194 @@
         "required": [
           "invitation",
           "issued"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "phone": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "company": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "LEAD",
+                    "ACTIVE",
+                    "INACTIVE",
+                    "BLOCKED"
+                  ]
+                },
+                "totalSpentCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "ordersCount": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "assignedUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "email",
+                "name",
+                "phone",
+                "company",
+                "notes",
+                "status",
+                "totalSpentCents",
+                "ordersCount",
+                "assignedUserId",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "description": "Absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "EarningEntryPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "campaignId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "amountCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "expectedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "receivedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "SYNCED",
+                    "MANUAL"
+                  ]
+                },
+                "reference": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "campaignId",
+                "title",
+                "category",
+                "amountCents",
+                "expectedAt",
+                "receivedAt",
+                "source",
+                "reference",
+                "notes",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "description": "Absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
         ],
         "additionalProperties": false
       },
@@ -27066,6 +26568,241 @@
         ],
         "additionalProperties": false
       },
+      "InvoicePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "invoiceNumber": {
+                  "type": "string"
+                },
+                "campaignId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "clientName": {
+                  "type": "string"
+                },
+                "clientEmail": {
+                  "type": "string",
+                  "format": "email"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "DRAFT",
+                    "ISSUED",
+                    "PARTIALLY_PAID",
+                    "PAID",
+                    "CANCELLED"
+                  ]
+                },
+                "issueDate": {
+                  "type": "string"
+                },
+                "dueDate": {
+                  "type": "string"
+                },
+                "subtotalCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "taxCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "totalCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "paidCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "notes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdById": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "milestones": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "invoiceId": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "amountCents": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "dueDate": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "PENDING",
+                          "IN_PROGRESS",
+                          "COMPLETED",
+                          "PAID"
+                        ]
+                      },
+                      "completedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "invoiceId",
+                      "title",
+                      "amountCents",
+                      "dueDate",
+                      "status",
+                      "completedAt",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "payments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "invoiceId": {
+                        "type": "string"
+                      },
+                      "amountCents": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "paidAt": {
+                        "type": "string"
+                      },
+                      "paymentMethod": {
+                        "type": "string",
+                        "enum": [
+                          "CASH_ON_DELIVERY",
+                          "MANUAL_BANK_TRANSFER",
+                          "OTHER_OFFLINE"
+                        ]
+                      },
+                      "reference": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "SYNCED",
+                          "MANUAL"
+                        ]
+                      },
+                      "notes": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "invoiceId",
+                      "amountCents",
+                      "paidAt",
+                      "paymentMethod",
+                      "reference",
+                      "source",
+                      "notes",
+                      "createdAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "invoiceNumber",
+                "campaignId",
+                "clientName",
+                "clientEmail",
+                "status",
+                "issueDate",
+                "dueDate",
+                "subtotalCents",
+                "taxCents",
+                "totalCents",
+                "paidCents",
+                "notes",
+                "createdById",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "description": "Absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
       "IssuedToken": {
         "type": "object",
         "properties": {
@@ -27412,6 +27149,350 @@
         ],
         "additionalProperties": false
       },
+      "OrderPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "orderNumber": {
+                  "type": "string"
+                },
+                "customerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "customerEmail": {
+                  "type": "string",
+                  "format": "email"
+                },
+                "customerName": {
+                  "type": "string"
+                },
+                "customerPhone": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "shippingAddress": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "PENDING",
+                    "PAID",
+                    "FULFILLED",
+                    "DELIVERED",
+                    "CANCELLED",
+                    "REFUNDED"
+                  ]
+                },
+                "paymentStatus": {
+                  "type": "string",
+                  "enum": [
+                    "UNPAID",
+                    "PAID",
+                    "PARTIALLY_REFUNDED",
+                    "REFUNDED",
+                    "FAILED"
+                  ]
+                },
+                "paymentMethod": {
+                  "type": "string",
+                  "enum": [
+                    "CASH_ON_DELIVERY",
+                    "MANUAL_BANK_TRANSFER",
+                    "OTHER_OFFLINE"
+                  ]
+                },
+                "paymentDetails": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "promoCodeId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "subtotalCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "discountCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "shippingCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "totalCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "paidCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "refundedCents": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "assignedUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "orderId": {
+                        "type": "string"
+                      },
+                      "variantId": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "sku": {
+                        "type": "string"
+                      },
+                      "quantity": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "unitPriceCents": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "totalPriceCents": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "orderId",
+                      "variantId",
+                      "title",
+                      "sku",
+                      "quantity",
+                      "unitPriceCents",
+                      "totalPriceCents",
+                      "createdAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "shipments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "orderId": {
+                        "type": "string"
+                      },
+                      "carrier": {
+                        "type": "string"
+                      },
+                      "trackingNumber": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "shippedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "deliveredAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "notes": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "orderId",
+                      "carrier",
+                      "trackingNumber",
+                      "status",
+                      "shippedAt",
+                      "deliveredAt",
+                      "notes",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "returns": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "orderId": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "REQUESTED",
+                          "APPROVED",
+                          "REJECTED",
+                          "RECEIVED",
+                          "RESTOCKED"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "restockResellable": {
+                        "type": "boolean"
+                      },
+                      "decisionNotes": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "decidedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "orderId",
+                      "status",
+                      "reason",
+                      "restockResellable",
+                      "decisionNotes",
+                      "decidedAt",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "orderNumber",
+                "customerId",
+                "customerEmail",
+                "customerName",
+                "customerPhone",
+                "shippingAddress",
+                "status",
+                "paymentStatus",
+                "paymentMethod",
+                "paymentDetails",
+                "promoCodeId",
+                "subtotalCents",
+                "discountCents",
+                "shippingCents",
+                "totalCents",
+                "paidCents",
+                "refundedCents",
+                "assignedUserId",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "description": "Absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
       "Permission": {
         "type": "object",
         "properties": {
@@ -27600,6 +27681,126 @@
                 "status",
                 "responseNotes",
                 "assignedUserId",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "description": "Absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "ProductPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "categoryId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isActive": {
+                  "type": "boolean"
+                },
+                "imageIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "productId": {
+                        "type": "string"
+                      },
+                      "sku": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "priceCents": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "stock": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "isActive": {
+                        "type": "boolean"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "productId",
+                      "sku",
+                      "title",
+                      "priceCents",
+                      "stock",
+                      "isActive",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "slug",
+                "name",
+                "description",
+                "categoryId",
+                "isActive",
+                "imageIds",
                 "createdAt",
                 "updatedAt"
               ],
@@ -28384,6 +28585,106 @@
           "ACTIVE",
           "DISABLED"
         ]
+      },
+      "WorkflowRunPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "ruleId": {
+                  "type": "string"
+                },
+                "trigger": {
+                  "type": "string",
+                  "enum": [
+                    "INBOX_MESSAGE_RECEIVED",
+                    "ORDER_CREATED",
+                    "MEETING_REQUESTED",
+                    "PROPOSAL_RECEIVED",
+                    "LEAD_CREATED"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "SUCCESS",
+                    "FAILED",
+                    "PENDING_APPROVAL",
+                    "REJECTED"
+                  ]
+                },
+                "payload": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "executionResult": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "errorMessage": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retriesCount": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "startedAt": {
+                  "type": "string"
+                },
+                "completedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "ruleId",
+                "trigger",
+                "status",
+                "payload",
+                "executionResult",
+                "errorMessage",
+                "retriesCount",
+                "startedAt",
+                "completedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "description": "Absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
       }
     },
     "securitySchemes": {

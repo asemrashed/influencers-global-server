@@ -9,7 +9,6 @@ import {
   growthSeriesSchema,
   idParamSchema,
   manualFollowerEntrySchema,
-  okSchema,
   publishDraftResultSchema,
   socialAccountSchema,
   updateContentDraftSchema,
@@ -170,27 +169,14 @@ export function socialRoutes(kit: RouteKit): Router {
         };
       }
 
-      // Successful sync simulation
-      const newFollowerCount = account.followerCount + 15;
-      const updated = await c.db.$transaction(async (tx) => {
-        const acc = await tx.socialAccount.update({
-          where: { id: account.id },
-          data: {
-            followerCount: newFollowerCount,
-            isStale: false,
-            lastSyncedAt: new Date(),
-          },
-        });
-
-        await tx.followerSnapshot.create({
-          data: {
-            accountId: acc.id,
-            followerCount: newFollowerCount,
-            source: 'SYNCED',
-          },
-        });
-
-        return acc;
+      // Automated live platform sync requires direct official OAuth / Graph API integration.
+      // Rather than fabricating follower counts or faking SYNCED metrics, mark stale and require manual entry fallback.
+      const updated = await c.db.socialAccount.update({
+        where: { id: account.id },
+        data: {
+          isStale: true,
+          status: 'EXPIRED',
+        },
       });
 
       return {
@@ -201,7 +187,7 @@ export function socialRoutes(kit: RouteKit): Router {
         scopes: updated.scopes,
         status: updated.status,
         followerCount: updated.followerCount,
-        isStale: updated.isStale,
+        isStale: true,
         lastSyncedAt: updated.lastSyncedAt ? updated.lastSyncedAt.toISOString() : null,
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),

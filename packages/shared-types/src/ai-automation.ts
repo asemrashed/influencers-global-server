@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pageOf, paginationQuerySchema } from './common.js';
 
 export const approvalLevelSchema = z.enum(['ALWAYS_HUMAN', 'DEFAULT_HUMAN', 'AUTOMATIC']);
 export type ApprovalLevel = z.infer<typeof approvalLevelSchema>;
@@ -127,4 +128,25 @@ export const triggerWorkflowBodySchema = z.object({
   payload: z.record(z.string(), z.unknown()),
 });
 export type TriggerWorkflowBody = z.infer<typeof triggerWorkflowBodySchema>;
+
+// ─────────────────────────────────────────────────────────────
+// PAGINATED SCHEMAS & LIST QUERIES
+// ─────────────────────────────────────────────────────────────
+
+export const aiActionListQuerySchema = paginationQuerySchema.extend({
+  taskType: aiTaskTypeSchema.optional(),
+  pendingApproval: z.string().optional(),
+});
+export type AiActionListQuery = z.infer<typeof aiActionListQuerySchema>;
+export const aiActionPageSchema = pageOf(aiActionSchema, 'AiActionPage');
+export type AiActionPage = z.infer<typeof aiActionPageSchema>;
+
+export const workflowRunListQuerySchema = paginationQuerySchema.extend({
+  ruleId: z.string().optional(),
+  trigger: workflowTriggerSchema.optional(),
+  status: workflowRunStatusSchema.optional(),
+});
+export type WorkflowRunListQuery = z.infer<typeof workflowRunListQuerySchema>;
+export const workflowRunPageSchema = pageOf(workflowRunSchema, 'WorkflowRunPage');
+export type WorkflowRunPage = z.infer<typeof workflowRunPageSchema>;
 

@@ -56,7 +56,7 @@ describe('Phase 3 E2E Flow — Proposals, Campaigns, Deliverables & Meetings', (
     const deliv = campDetailRes.body.deliverables[0];
 
     // 5. Manager signs in, submits assets for the deliverable
-    const managerUser = await createUser(t.c, { email: 'manager@example.test', roleKey: 'manager' });
+    await createUser(t.c, { email: 'manager@example.test', roleKey: 'manager' });
     const manager = new Client(t.app);
     await manager.login('manager@example.test');
 

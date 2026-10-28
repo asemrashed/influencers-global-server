@@ -3,7 +3,6 @@ import {
   addTicketReplySchema,
   createSupportTicketSchema,
   idParamSchema,
-  okSchema,
   supportTicketDetailSchema,
   supportTicketListQuerySchema,
   supportTicketPageSchema,

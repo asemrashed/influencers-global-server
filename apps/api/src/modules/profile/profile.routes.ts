@@ -5,7 +5,6 @@ import {
   createRateCardItemSchema,
   idParamSchema,
   mediaKitSchema,
-  okSchema,
   paginationQuerySchema,
   portfolioAlbumDetailSchema,
   portfolioAlbumPageSchema,

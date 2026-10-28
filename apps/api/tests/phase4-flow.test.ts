@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Client, createTestApp, createUser, signInWithTwoFactor, type TestApp } from './helpers.js';
+import { Client, createTestApp, signInWithTwoFactor, type TestApp } from './helpers.js';
 
 let t: TestApp;
 beforeAll(async () => {

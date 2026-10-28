@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pageOf, paginationQuerySchema } from './common.js';
 
 export const customerStatusSchema = z.enum(['LEAD', 'ACTIVE', 'INACTIVE', 'BLOCKED']);
 export type CustomerStatus = z.infer<typeof customerStatusSchema>;
@@ -273,19 +274,27 @@ export const orderSchema = z.object({
 export type Order = z.infer<typeof orderSchema>;
 
 export const checkoutItemInputSchema = z.object({
-  variantId: z.string(),
-  quantity: z.number().int().positive(),
+  variantId: z.string().min(1).max(100),
+  quantity: z.number().int().positive().max(1000),
 });
 
+export const shippingAddressSchema = z.object({
+  street: z.string().min(1).max(200),
+  city: z.string().min(1).max(100),
+  state: z.string().max(100).optional(),
+  postalCode: z.string().max(30).optional(),
+  country: z.string().min(2).max(100),
+}).passthrough();
+
 export const checkoutBodySchema = z.object({
-  customerEmail: z.string().email(),
-  customerName: z.string().min(1),
-  customerPhone: z.string().optional(),
-  shippingAddress: z.record(z.string(), z.unknown()),
-  items: z.array(checkoutItemInputSchema).min(1),
-  promoCode: z.string().optional(),
+  customerEmail: z.string().email().max(254),
+  customerName: z.string().min(1).max(100),
+  customerPhone: z.string().max(50).optional(),
+  shippingAddress: shippingAddressSchema,
+  items: z.array(checkoutItemInputSchema).min(1).max(100),
+  promoCode: z.string().max(50).optional(),
   paymentMethod: paymentMethodSchema.default('CASH_ON_DELIVERY'),
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z.string().max(100).optional(),
 });
 export type CheckoutBody = z.infer<typeof checkoutBodySchema>;
 
@@ -443,4 +452,48 @@ export const earningsSummarySchema = z.object({
   categories: z.record(z.string(), z.number().int()),
 });
 export type EarningsSummary = z.infer<typeof earningsSummarySchema>;
+
+// ─────────────────────────────────────────────────────────────
+// PAGINATED SCHEMAS & LIST QUERIES
+// ─────────────────────────────────────────────────────────────
+
+export const productListQuerySchema = paginationQuerySchema.extend({
+  categoryId: z.string().optional(),
+  search: z.string().optional(),
+});
+export type ProductListQuery = z.infer<typeof productListQuerySchema>;
+export const productPageSchema = pageOf(productSchema, 'ProductPage');
+export type ProductPage = z.infer<typeof productPageSchema>;
+
+export const customerListQuerySchema = paginationQuerySchema.extend({
+  status: customerStatusSchema.optional(),
+  search: z.string().optional(),
+});
+export type CustomerListQuery = z.infer<typeof customerListQuerySchema>;
+export const customerPageSchema = pageOf(customerSchema, 'CustomerPage');
+export type CustomerPage = z.infer<typeof customerPageSchema>;
+
+export const orderListQuerySchema = paginationQuerySchema.extend({
+  status: orderStatusSchema.optional(),
+  customerId: z.string().optional(),
+});
+export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
+export const orderPageSchema = pageOf(orderSchema, 'OrderPage');
+export type OrderPage = z.infer<typeof orderPageSchema>;
+
+export const invoiceListQuerySchema = paginationQuerySchema.extend({
+  status: z.enum(['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']).optional(),
+  campaignId: z.string().optional(),
+});
+export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
+export const invoicePageSchema = pageOf(invoiceSchema, 'InvoicePage');
+export type InvoicePage = z.infer<typeof invoicePageSchema>;
+
+export const earningEntryListQuerySchema = paginationQuerySchema.extend({
+  category: z.string().optional(),
+  campaignId: z.string().optional(),
+});
+export type EarningEntryListQuery = z.infer<typeof earningEntryListQuerySchema>;
+export const earningEntryPageSchema = pageOf(earningEntrySchema, 'EarningEntryPage');
+export type EarningEntryPage = z.infer<typeof earningEntryPageSchema>;
 

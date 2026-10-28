@@ -60,7 +60,7 @@ describe('Phase 6 E2E Flow — Customers, Commerce & Earnings', () => {
 
     const storeProducts = await guest.get(`/api/v1/store/products?categoryId=${category.id}`);
     expect(storeProducts.status).toBe(200);
-    expect(storeProducts.body.some((p: any) => p.slug === 'tour-hoodie')).toBe(true);
+    expect(storeProducts.body.items.some((p: any) => p.slug === 'tour-hoodie')).toBe(true);
 
     // 5. Invariant check: Online payment attempt must be rejected while PAYMENT_PROVIDER is blank
     const fakeOnlineCheckout = await guest.post('/api/v1/store/checkout', {
@@ -105,7 +105,7 @@ describe('Phase 6 E2E Flow — Customers, Commerce & Earnings', () => {
 
     // Verify stock was decremented by 2 (initial 10 -> 8)
     const updatedStore = await guest.get('/api/v1/store/products?search=Tour');
-    const currentM = updatedStore.body[0].variants.find((v: any) => v.id === variantM.id);
+    const currentM = updatedStore.body.items[0].variants.find((v: any) => v.id === variantM.id);
     expect(currentM.stock).toBe(8);
 
     // Invariant: Stock cannot go negative
@@ -180,7 +180,7 @@ describe('Phase 6 E2E Flow — Customers, Commerce & Earnings', () => {
 
     // Verify stock restored (8 + 2 = 10)
     const restoredStore = await guest.get('/api/v1/store/products?search=Tour');
-    const restoredM = restoredStore.body[0].variants.find((v: any) => v.id === variantM.id);
+    const restoredM = restoredStore.body.items[0].variants.find((v: any) => v.id === variantM.id);
     expect(restoredM.stock).toBe(10);
 
     // 9. Invoices & Partial Payments
@@ -231,9 +231,62 @@ describe('Phase 6 E2E Flow — Customers, Commerce & Earnings', () => {
 
     const entriesRes = await admin.get('/api/v1/earnings/entries');
     expect(entriesRes.status).toBe(200);
-    expect(entriesRes.body.length).toBeGreaterThan(0);
-    expect(entriesRes.body.every((e: any) => e.source === 'MANUAL' || e.source === 'SYNCED')).toBe(true);
+    expect(entriesRes.body.items.length).toBeGreaterThan(0);
+    expect(entriesRes.body.items.every((e: any) => e.source === 'MANUAL' || e.source === 'SYNCED')).toBe(true);
+
+    // 11. Concurrency Test: Race 6 concurrent checkouts on a single remaining item
+    // Create limited stock variant with stock = 1 and promo code with maxUses = 1
+    const limitedProdRes = await admin.post('/api/v1/products', {
+      slug: `rare-item-${Date.now()}`,
+      name: 'Rare Collector Item',
+      description: 'Only 1 in stock',
+      categoryId: category.id,
+      isActive: true,
+      imageIds: [],
+      variants: [
+        { sku: `RARE-1-${Date.now()}`, title: 'Exclusive', priceCents: 5000, stock: 1, isActive: true },
+      ],
+    });
+    expect(limitedProdRes.status).toBe(201);
+    const rareVariant = limitedProdRes.body.variants[0];
+
+    const rarePromoRes = await admin.post('/api/v1/promo-codes', {
+      code: `RARE50-${Date.now()}`,
+      discountBps: 5000,
+      maxUses: 1,
+      isActive: true,
+    });
+    expect(rarePromoRes.status).toBe(201);
+    const rarePromoCode = rarePromoRes.body.code;
+
+    // Fire 6 concurrent checkouts for this 1-stock item
+    const checkoutRequests = Array.from({ length: 6 }).map((_, idx) =>
+      guest.post('/api/v1/store/checkout', {
+        customerEmail: `buyer${idx}@example.com`,
+        customerName: `Buyer ${idx}`,
+        shippingAddress: { street: '123 Market St', city: 'Metropolis', country: 'US' },
+        items: [{ variantId: rareVariant.id, quantity: 1 }],
+        promoCode: rarePromoCode,
+        paymentMethod: 'CASH_ON_DELIVERY',
+      }),
+    );
+
+    const results = await Promise.all(checkoutRequests);
+    const successes = results.filter((r) => r.status === 201);
+    const conflicts = results.filter((r) => r.status === 409 || r.status === 400);
+
+    // Exactly 1 order must succeed; remaining 5 must fail with conflict/validation
+    expect(successes).toHaveLength(1);
+    expect(conflicts).toHaveLength(5);
+
+    // Check DB invariants: Stock must be 0 (never negative)
+    const rareVariantInDb = await t.c.db.productVariant.findUniqueOrThrow({ where: { id: rareVariant.id } });
+    expect(rareVariantInDb.stock).toBe(0);
+
+    // Promo code usage must be capped at 1
+    const promoInDb = await t.c.db.promoCode.findUniqueOrThrow({ where: { code: rarePromoCode } });
+    expect(promoInDb.usedCount).toBe(1);
   },
-  60_000,
+  90_000,
 );
 });

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Client, createTestApp, createUser, signInWithTwoFactor, type TestApp } from './helpers.js';
+import { createTestApp, signInWithTwoFactor, type TestApp } from './helpers.js';
 
 let t: TestApp;
 beforeAll(async () => {
@@ -28,23 +28,22 @@ describe('Phase 5 E2E Flow — Social, Analytics & Dashboard Summary', () => {
     expect(connectRes.body.followerCount).toBe(150000);
     const accountId = connectRes.body.id;
 
-    // 3. Automated Sync followers count
+    // 3. Automated Sync without live OAuth credentials returns stale marker with manual fallback
     const syncRes = await admin.post(`/api/v1/social/accounts/${accountId}/sync`, {});
     expect(syncRes.status).toBe(200);
-    expect(syncRes.body.followerCount).toBe(150015);
-    expect(syncRes.body.isStale).toBe(false);
+    expect(syncRes.body.isStale).toBe(true);
 
-    // 4. Manual Fallback Entry (provenance tagged as manual)
+    // 4. Manual Fallback Entry (provenance tagged as manual, no fake numbers)
     const manualRes = await admin.post(`/api/v1/social/accounts/${accountId}/manual-entry`, {
       followerCount: 152000,
     });
     expect(manualRes.status).toBe(200);
     expect(manualRes.body.followerCount).toBe(152000);
 
-    // Verify growth snapshots recorded both synced and manual entries
+    // Verify growth snapshots recorded initial connected snapshot and manual fallback entry
     const growthRes = await admin.get(`/api/v1/social/accounts/${accountId}/growth`);
     expect(growthRes.status).toBe(200);
-    expect(growthRes.body.snapshots.length).toBeGreaterThanOrEqual(3);
+    expect(growthRes.body.snapshots.length).toBeGreaterThanOrEqual(2);
     const sources = growthRes.body.snapshots.map((s: any) => s.source);
     expect(sources).toContain('SYNCED');
     expect(sources).toContain('MANUAL');

@@ -65,7 +65,7 @@ describe('Phase 7 E2E Flow — AI & Automation', () => {
       // List pending approval actions
       const pendingListRes = await admin.get('/api/v1/ai/actions?pendingApproval=true');
       expect(pendingListRes.status).toBe(200);
-      expect(pendingListRes.body.some((a: any) => a.id === dummyAction.id)).toBe(true);
+      expect(pendingListRes.body.items.some((a: any) => a.id === dummyAction.id)).toBe(true);
 
       // Human review: Reject action
       const rejectRes = await admin.post(`/api/v1/ai/actions/${dummyAction.id}/decide`, {
@@ -131,8 +131,8 @@ describe('Phase 7 E2E Flow — AI & Automation', () => {
       // Verify execution run appears in audit log
       const runsListRes = await admin.get(`/api/v1/workflows/runs?ruleId=${rule.id}`);
       expect(runsListRes.status).toBe(200);
-      expect(runsListRes.body.length).toBeGreaterThan(0);
-      expect(runsListRes.body[0].status).toBe('SUCCESS');
+      expect(runsListRes.body.items.length).toBeGreaterThan(0);
+      expect(runsListRes.body.items[0].status).toBe('SUCCESS');
     },
     60_000,
   );

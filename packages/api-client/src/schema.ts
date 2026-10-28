@@ -2025,7 +2025,7 @@ export interface paths {
         put?: never;
         /**
          * Storefront checkout / order creation
-         * @description Public: Public storefront category catalog
+         * @description Public: Public customer shopping cart checkout
          */
         post: operations["storeCheckout"];
         delete?: never;
@@ -2043,7 +2043,7 @@ export interface paths {
         };
         /**
          * List storefront products
-         * @description Public: Public storefront category catalog
+         * @description Public: Public storefront product catalog
          */
         get: operations["listStoreProducts"];
         put?: never;
@@ -2404,6 +2404,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AiActionPage: {
+            items: {
+                id: string;
+                /** @enum {string} */
+                taskType: "INBOX_CLASSIFY" | "INBOX_SUMMARIZE" | "REPLY_DRAFT" | "MEETING_SCORE" | "LEAD_DETECT" | "GROWTH_INSIGHT";
+                inputData: {
+                    [key: string]: unknown;
+                };
+                outputData: {
+                    [key: string]: unknown;
+                };
+                /** @enum {string} */
+                approvalLevel: "ALWAYS_HUMAN" | "DEFAULT_HUMAN" | "AUTOMATIC";
+                approvedById: string | null;
+                approvedAt: string | null;
+                rejectionReason: string | null;
+                executedAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+            }[];
+            /** @description Absent on the last page */
+            nextCursor?: string;
+        };
         AuditLog: {
             id: string;
             action: string;
@@ -2485,6 +2508,45 @@ export interface components {
         CreateInvitationResponse: {
             invitation: components["schemas"]["Invitation"];
             issued: components["schemas"]["IssuedToken"];
+        };
+        CustomerPage: {
+            items: {
+                id: string;
+                /** Format: email */
+                email: string;
+                name: string;
+                phone: string | null;
+                company: string | null;
+                notes: string | null;
+                /** @enum {string} */
+                status: "LEAD" | "ACTIVE" | "INACTIVE" | "BLOCKED";
+                totalSpentCents: number;
+                ordersCount: number;
+                assignedUserId: string | null;
+                createdAt: string;
+                updatedAt: string;
+            }[];
+            /** @description Absent on the last page */
+            nextCursor?: string;
+        };
+        EarningEntryPage: {
+            items: {
+                id: string;
+                campaignId: string | null;
+                title: string;
+                category: string;
+                amountCents: number;
+                expectedAt: string | null;
+                receivedAt: string | null;
+                /** @enum {string} */
+                source: "SYNCED" | "MANUAL";
+                reference: string | null;
+                notes: string | null;
+                createdAt: string;
+                updatedAt: string;
+            }[];
+            /** @description Absent on the last page */
+            nextCursor?: string;
         };
         ErrorResponse: {
             /** @enum {string} */
@@ -2592,6 +2654,55 @@ export interface components {
             /** @description Absent on the last page */
             nextCursor?: string;
         };
+        InvoicePage: {
+            items: {
+                id: string;
+                invoiceNumber: string;
+                campaignId: string | null;
+                clientName: string;
+                /** Format: email */
+                clientEmail: string;
+                /** @enum {string} */
+                status: "DRAFT" | "ISSUED" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
+                issueDate: string;
+                dueDate: string;
+                subtotalCents: number;
+                taxCents: number;
+                totalCents: number;
+                paidCents: number;
+                notes: string | null;
+                createdById: string | null;
+                milestones?: {
+                    id: string;
+                    invoiceId: string;
+                    title: string;
+                    amountCents: number;
+                    dueDate: string;
+                    /** @enum {string} */
+                    status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "PAID";
+                    completedAt: string | null;
+                    createdAt: string;
+                    updatedAt: string;
+                }[];
+                payments?: {
+                    id: string;
+                    invoiceId: string;
+                    amountCents: number;
+                    paidAt: string;
+                    /** @enum {string} */
+                    paymentMethod: "CASH_ON_DELIVERY" | "MANUAL_BANK_TRANSFER" | "OTHER_OFFLINE";
+                    reference: string | null;
+                    /** @enum {string} */
+                    source: "SYNCED" | "MANUAL";
+                    notes: string | null;
+                    createdAt: string;
+                }[];
+                createdAt: string;
+                updatedAt: string;
+            }[];
+            /** @description Absent on the last page */
+            nextCursor?: string;
+        };
         IssuedToken: {
             /** @enum {string} */
             delivery: "email" | "manual";
@@ -2669,6 +2780,76 @@ export interface components {
             /** @constant */
             ok: true;
         };
+        OrderPage: {
+            items: {
+                id: string;
+                orderNumber: string;
+                customerId: string | null;
+                /** Format: email */
+                customerEmail: string;
+                customerName: string;
+                customerPhone: string | null;
+                shippingAddress: {
+                    [key: string]: unknown;
+                };
+                /** @enum {string} */
+                status: "PENDING" | "PAID" | "FULFILLED" | "DELIVERED" | "CANCELLED" | "REFUNDED";
+                /** @enum {string} */
+                paymentStatus: "UNPAID" | "PAID" | "PARTIALLY_REFUNDED" | "REFUNDED" | "FAILED";
+                /** @enum {string} */
+                paymentMethod: "CASH_ON_DELIVERY" | "MANUAL_BANK_TRANSFER" | "OTHER_OFFLINE";
+                paymentDetails: {
+                    [key: string]: unknown;
+                } | null;
+                promoCodeId: string | null;
+                subtotalCents: number;
+                discountCents: number;
+                shippingCents: number;
+                totalCents: number;
+                paidCents: number;
+                refundedCents: number;
+                assignedUserId: string | null;
+                items?: {
+                    id: string;
+                    orderId: string;
+                    variantId: string;
+                    title: string;
+                    sku: string;
+                    quantity: number;
+                    unitPriceCents: number;
+                    totalPriceCents: number;
+                    createdAt: string;
+                }[];
+                shipments?: {
+                    id: string;
+                    orderId: string;
+                    carrier: string;
+                    trackingNumber: string | null;
+                    status: string;
+                    shippedAt: string | null;
+                    deliveredAt: string | null;
+                    notes: string | null;
+                    createdAt: string;
+                    updatedAt: string;
+                }[];
+                returns?: {
+                    id: string;
+                    orderId: string;
+                    /** @enum {string} */
+                    status: "REQUESTED" | "APPROVED" | "REJECTED" | "RECEIVED" | "RESTOCKED";
+                    reason: string;
+                    restockResellable: boolean;
+                    decisionNotes: string | null;
+                    decidedAt: string | null;
+                    createdAt: string;
+                    updatedAt: string;
+                }[];
+                createdAt: string;
+                updatedAt: string;
+            }[];
+            /** @description Absent on the last page */
+            nextCursor?: string;
+        };
         Permission: {
             /** @description `module.action`, e.g. `users.read` */
             key: string;
@@ -2708,6 +2889,32 @@ export interface components {
                 status: "SENT" | "ACCEPTED" | "DECLINED" | "CANCELLED";
                 responseNotes: string | null;
                 assignedUserId: string | null;
+                createdAt: string;
+                updatedAt: string;
+            }[];
+            /** @description Absent on the last page */
+            nextCursor?: string;
+        };
+        ProductPage: {
+            items: {
+                id: string;
+                slug: string;
+                name: string;
+                description: string | null;
+                categoryId: string | null;
+                isActive: boolean;
+                imageIds: string[];
+                variants?: {
+                    id: string;
+                    productId: string;
+                    sku: string;
+                    title: string;
+                    priceCents: number;
+                    stock: number;
+                    isActive: boolean;
+                    createdAt: string;
+                    updatedAt: string;
+                }[];
                 createdAt: string;
                 updatedAt: string;
             }[];
@@ -2888,6 +3095,28 @@ export interface components {
         };
         /** @enum {string} */
         UserStatus: "ACTIVE" | "DISABLED";
+        WorkflowRunPage: {
+            items: {
+                id: string;
+                ruleId: string;
+                /** @enum {string} */
+                trigger: "INBOX_MESSAGE_RECEIVED" | "ORDER_CREATED" | "MEETING_REQUESTED" | "PROPOSAL_RECEIVED" | "LEAD_CREATED";
+                /** @enum {string} */
+                status: "SUCCESS" | "FAILED" | "PENDING_APPROVAL" | "REJECTED";
+                payload: {
+                    [key: string]: unknown;
+                };
+                executionResult: {
+                    [key: string]: unknown;
+                } | null;
+                errorMessage: string | null;
+                retriesCount: number;
+                startedAt: string;
+                completedAt: string | null;
+            }[];
+            /** @description Absent on the last page */
+            nextCursor?: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -2900,6 +3129,9 @@ export interface operations {
     listAiActions: {
         parameters: {
             query?: {
+                limit?: number;
+                /** @description Opaque; pass `nextCursor` from the previous page */
+                cursor?: string;
                 taskType?: "INBOX_CLASSIFY" | "INBOX_SUMMARIZE" | "REPLY_DRAFT" | "MEETING_SCORE" | "LEAD_DETECT" | "GROWTH_INSIGHT";
                 pendingApproval?: string;
             };
@@ -2915,25 +3147,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        id: string;
-                        /** @enum {string} */
-                        taskType: "INBOX_CLASSIFY" | "INBOX_SUMMARIZE" | "REPLY_DRAFT" | "MEETING_SCORE" | "LEAD_DETECT" | "GROWTH_INSIGHT";
-                        inputData: {
-                            [key: string]: unknown;
-                        };
-                        outputData: {
-                            [key: string]: unknown;
-                        };
-                        /** @enum {string} */
-                        approvalLevel: "ALWAYS_HUMAN" | "DEFAULT_HUMAN" | "AUTOMATIC";
-                        approvedById: string | null;
-                        approvedAt: string | null;
-                        rejectionReason: string | null;
-                        executedAt: string | null;
-                        createdAt: string;
-                        updatedAt: string;
-                    }[];
+                    "application/json": components["schemas"]["AiActionPage"];
                 };
             };
             /** @description Error codes: VALIDATION_FAILED */
@@ -5335,6 +5549,9 @@ export interface operations {
     listCustomers: {
         parameters: {
             query?: {
+                limit?: number;
+                /** @description Opaque; pass `nextCursor` from the previous page */
+                cursor?: string;
                 status?: "LEAD" | "ACTIVE" | "INACTIVE" | "BLOCKED";
                 search?: string;
             };
@@ -5350,22 +5567,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        id: string;
-                        /** Format: email */
-                        email: string;
-                        name: string;
-                        phone: string | null;
-                        company: string | null;
-                        notes: string | null;
-                        /** @enum {string} */
-                        status: "LEAD" | "ACTIVE" | "INACTIVE" | "BLOCKED";
-                        totalSpentCents: number;
-                        ordersCount: number;
-                        assignedUserId: string | null;
-                        createdAt: string;
-                        updatedAt: string;
-                    }[];
+                    "application/json": components["schemas"]["CustomerPage"];
                 };
             };
             /** @description Error codes: VALIDATION_FAILED */
@@ -5862,6 +6064,9 @@ export interface operations {
     listEarningsEntries: {
         parameters: {
             query?: {
+                limit?: number;
+                /** @description Opaque; pass `nextCursor` from the previous page */
+                cursor?: string;
                 category?: string;
                 campaignId?: string;
             };
@@ -5877,21 +6082,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        id: string;
-                        campaignId: string | null;
-                        title: string;
-                        category: string;
-                        amountCents: number;
-                        expectedAt: string | null;
-                        receivedAt: string | null;
-                        /** @enum {string} */
-                        source: "SYNCED" | "MANUAL";
-                        reference: string | null;
-                        notes: string | null;
-                        createdAt: string;
-                        updatedAt: string;
-                    }[];
+                    "application/json": components["schemas"]["EarningEntryPage"];
                 };
             };
             /** @description Error codes: VALIDATION_FAILED */
@@ -6043,6 +6234,9 @@ export interface operations {
     listInvoices: {
         parameters: {
             query?: {
+                limit?: number;
+                /** @description Opaque; pass `nextCursor` from the previous page */
+                cursor?: string;
                 status?: "DRAFT" | "ISSUED" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
                 campaignId?: string;
             };
@@ -6058,51 +6252,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        id: string;
-                        invoiceNumber: string;
-                        campaignId: string | null;
-                        clientName: string;
-                        /** Format: email */
-                        clientEmail: string;
-                        /** @enum {string} */
-                        status: "DRAFT" | "ISSUED" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
-                        issueDate: string;
-                        dueDate: string;
-                        subtotalCents: number;
-                        taxCents: number;
-                        totalCents: number;
-                        paidCents: number;
-                        notes: string | null;
-                        createdById: string | null;
-                        milestones?: {
-                            id: string;
-                            invoiceId: string;
-                            title: string;
-                            amountCents: number;
-                            dueDate: string;
-                            /** @enum {string} */
-                            status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "PAID";
-                            completedAt: string | null;
-                            createdAt: string;
-                            updatedAt: string;
-                        }[];
-                        payments?: {
-                            id: string;
-                            invoiceId: string;
-                            amountCents: number;
-                            paidAt: string;
-                            /** @enum {string} */
-                            paymentMethod: "CASH_ON_DELIVERY" | "MANUAL_BANK_TRANSFER" | "OTHER_OFFLINE";
-                            reference: string | null;
-                            /** @enum {string} */
-                            source: "SYNCED" | "MANUAL";
-                            notes: string | null;
-                            createdAt: string;
-                        }[];
-                        createdAt: string;
-                        updatedAt: string;
-                    }[];
+                    "application/json": components["schemas"]["InvoicePage"];
                 };
             };
             /** @description Error codes: VALIDATION_FAILED */
@@ -8349,6 +8499,9 @@ export interface operations {
     listOrders: {
         parameters: {
             query?: {
+                limit?: number;
+                /** @description Opaque; pass `nextCursor` from the previous page */
+                cursor?: string;
                 status?: "PENDING" | "PAID" | "FULFILLED" | "DELIVERED" | "CANCELLED" | "REFUNDED";
                 customerId?: string;
             };
@@ -8364,72 +8517,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        id: string;
-                        orderNumber: string;
-                        customerId: string | null;
-                        /** Format: email */
-                        customerEmail: string;
-                        customerName: string;
-                        customerPhone: string | null;
-                        shippingAddress: {
-                            [key: string]: unknown;
-                        };
-                        /** @enum {string} */
-                        status: "PENDING" | "PAID" | "FULFILLED" | "DELIVERED" | "CANCELLED" | "REFUNDED";
-                        /** @enum {string} */
-                        paymentStatus: "UNPAID" | "PAID" | "PARTIALLY_REFUNDED" | "REFUNDED" | "FAILED";
-                        /** @enum {string} */
-                        paymentMethod: "CASH_ON_DELIVERY" | "MANUAL_BANK_TRANSFER" | "OTHER_OFFLINE";
-                        paymentDetails: {
-                            [key: string]: unknown;
-                        } | null;
-                        promoCodeId: string | null;
-                        subtotalCents: number;
-                        discountCents: number;
-                        shippingCents: number;
-                        totalCents: number;
-                        paidCents: number;
-                        refundedCents: number;
-                        assignedUserId: string | null;
-                        items?: {
-                            id: string;
-                            orderId: string;
-                            variantId: string;
-                            title: string;
-                            sku: string;
-                            quantity: number;
-                            unitPriceCents: number;
-                            totalPriceCents: number;
-                            createdAt: string;
-                        }[];
-                        shipments?: {
-                            id: string;
-                            orderId: string;
-                            carrier: string;
-                            trackingNumber: string | null;
-                            status: string;
-                            shippedAt: string | null;
-                            deliveredAt: string | null;
-                            notes: string | null;
-                            createdAt: string;
-                            updatedAt: string;
-                        }[];
-                        returns?: {
-                            id: string;
-                            orderId: string;
-                            /** @enum {string} */
-                            status: "REQUESTED" | "APPROVED" | "REJECTED" | "RECEIVED" | "RESTOCKED";
-                            reason: string;
-                            restockResellable: boolean;
-                            decisionNotes: string | null;
-                            decidedAt: string | null;
-                            createdAt: string;
-                            updatedAt: string;
-                        }[];
-                        createdAt: string;
-                        updatedAt: string;
-                    }[];
+                    "application/json": components["schemas"]["OrderPage"];
                 };
             };
             /** @description Error codes: VALIDATION_FAILED */
@@ -13055,6 +13143,12 @@ export interface operations {
                     customerName: string;
                     customerPhone?: string;
                     shippingAddress: {
+                        street: string;
+                        city: string;
+                        state?: string;
+                        postalCode?: string;
+                        country: string;
+                    } & {
                         [key: string]: unknown;
                     };
                     items: {
@@ -13187,6 +13281,9 @@ export interface operations {
     listStoreProducts: {
         parameters: {
             query?: {
+                limit?: number;
+                /** @description Opaque; pass `nextCursor` from the previous page */
+                cursor?: string;
                 categoryId?: string;
                 search?: string;
             };
@@ -13202,28 +13299,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        id: string;
-                        slug: string;
-                        name: string;
-                        description: string | null;
-                        categoryId: string | null;
-                        isActive: boolean;
-                        imageIds: string[];
-                        variants?: {
-                            id: string;
-                            productId: string;
-                            sku: string;
-                            title: string;
-                            priceCents: number;
-                            stock: number;
-                            isActive: boolean;
-                            createdAt: string;
-                            updatedAt: string;
-                        }[];
-                        createdAt: string;
-                        updatedAt: string;
-                    }[];
+                    "application/json": components["schemas"]["ProductPage"];
                 };
             };
             /** @description Error codes: VALIDATION_FAILED */
@@ -14635,6 +14711,9 @@ export interface operations {
     listWorkflowRuns: {
         parameters: {
             query?: {
+                limit?: number;
+                /** @description Opaque; pass `nextCursor` from the previous page */
+                cursor?: string;
                 ruleId?: string;
                 trigger?: "INBOX_MESSAGE_RECEIVED" | "ORDER_CREATED" | "MEETING_REQUESTED" | "PROPOSAL_RECEIVED" | "LEAD_CREATED";
                 status?: "SUCCESS" | "FAILED" | "PENDING_APPROVAL" | "REJECTED";
@@ -14651,24 +14730,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        id: string;
-                        ruleId: string;
-                        /** @enum {string} */
-                        trigger: "INBOX_MESSAGE_RECEIVED" | "ORDER_CREATED" | "MEETING_REQUESTED" | "PROPOSAL_RECEIVED" | "LEAD_CREATED";
-                        /** @enum {string} */
-                        status: "SUCCESS" | "FAILED" | "PENDING_APPROVAL" | "REJECTED";
-                        payload: {
-                            [key: string]: unknown;
-                        };
-                        executionResult: {
-                            [key: string]: unknown;
-                        } | null;
-                        errorMessage: string | null;
-                        retriesCount: number;
-                        startedAt: string;
-                        completedAt: string | null;
-                    }[];
+                    "application/json": components["schemas"]["WorkflowRunPage"];
                 };
             };
             /** @description Error codes: VALIDATION_FAILED */

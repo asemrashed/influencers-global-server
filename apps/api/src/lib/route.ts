@@ -42,8 +42,8 @@ export interface RouteSpec<A extends Access, P extends OptSchema, Q extends OptS
   errors?: ErrorCode[];
   /** Opt out of CSRF only for entry points used without a session (login, accept invite, forgot password). */
   csrf?: false;
-  /** `auth` adds a stricter per-IP limit on top of the global one. */
-  rateLimit?: 'auth';
+  /** Stricter per-IP limit on top of the global one. */
+  rateLimit?: 'auth' | 'public-form';
 }
 
 export interface HandlerArgs<A extends Access, P extends OptSchema, Q extends OptSchema, B extends OptSchema> {
@@ -78,6 +78,7 @@ export interface RouteKit {
   c: Container;
   registry: RegisteredRoute[];
   authLimiter: RequestHandler;
+  publicFormLimiter?: RequestHandler;
 }
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -181,6 +182,7 @@ export function routeFactory(kit: RouteKit, router: Router) {
 
     const stack: RequestHandler[] = [];
     if (spec.rateLimit === 'auth') stack.push(kit.authLimiter);
+    if (spec.rateLimit === 'public-form' && kit.publicFormLimiter) stack.push(kit.publicFormLimiter);
     stack.push((req: Request, res: Response, next: NextFunction) => {
       run(req, res).catch(next);
     });

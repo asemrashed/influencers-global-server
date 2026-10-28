@@ -39,7 +39,12 @@ export function createApp(c: Container): CreatedApp {
   app.set('trust proxy', c.env.TRUST_PROXY_HOPS); // 0 = direct; set 1 behind nginx so req.ip is the real client
 
   const registry: RegisteredRoute[] = [];
-  const kit: RouteKit = { c, registry, authLimiter: createLimiter(c, c.env.RATE_LIMIT_AUTH_PER_MIN, 'auth') };
+  const kit: RouteKit = {
+    c,
+    registry,
+    authLimiter: createLimiter(c, c.env.RATE_LIMIT_AUTH_PER_MIN, 'auth'),
+    publicFormLimiter: createLimiter(c, 30, 'public-form'),
+  };
 
   app.use(requestId);
   app.use(

@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import {
-  agreementSchema,
   campaignDetailSchema,
   campaignListQuerySchema,
   campaignPageSchema,
@@ -10,17 +9,13 @@ import {
   createProposalSchema,
   deliverableSchema,
   idParamSchema,
-  okSchema,
   proposalListQuerySchema,
   proposalPageSchema,
   proposalSchema,
   respondProposalSchema,
   reviewDeliverableSchema,
   submitDeliverableSchema,
-  updateCampaignSchema,
-  updateProposalSchema,
 } from '@platform/shared-types';
-import { z } from 'zod';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { pageArgs, toPage } from '../../lib/pagination.js';
 import { routeFactory, type RouteKit } from '../../lib/route.js';

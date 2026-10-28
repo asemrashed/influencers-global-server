@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { Prisma } from '../../generated/prisma/client.js';
 import {
   aiActionSchema,
+  aiActionListQuerySchema,
+  aiActionPageSchema,
   decideAiActionBodySchema,
   classifyInboxBodySchema,
   summarizeInboxBodySchema,
@@ -12,9 +15,12 @@ import {
   createWorkflowRuleBodySchema,
   updateWorkflowRuleBodySchema,
   workflowRunSchema,
+  workflowRunListQuerySchema,
+  workflowRunPageSchema,
   triggerWorkflowBodySchema,
 } from '@platform/shared-types';
 import { errors } from '../../lib/errors.js';
+import { pageArgs, toPage } from '../../lib/pagination.js';
 import { routeFactory, type RouteKit } from '../../lib/route.js';
 
 export function aiRoutes(kit: RouteKit): Router {
@@ -45,7 +51,7 @@ export function aiRoutes(kit: RouteKit): Router {
       body: classifyInboxBodySchema,
       response: { status: 200, schema: aiActionSchema },
     },
-    async ({ body, auth }) => {
+    async ({ body, auth: _auth }) => {
       requireAi();
       const message = await db.inboxMessage.findUnique({ where: { id: body.messageId } });
       if (!message) throw errors.notFound('Inbox message');
@@ -83,7 +89,7 @@ export function aiRoutes(kit: RouteKit): Router {
       body: summarizeInboxBodySchema,
       response: { status: 200, schema: aiActionSchema },
     },
-    async ({ body, auth }) => {
+    async ({ body, auth: _auth }) => {
       requireAi();
       const thread = await db.inboxThread.findUnique({
         where: { id: body.threadId },
@@ -124,7 +130,7 @@ export function aiRoutes(kit: RouteKit): Router {
       body: draftReplyBodySchema,
       response: { status: 201, schema: aiActionSchema },
     },
-    async ({ body, auth }) => {
+    async ({ body, auth: _auth }) => {
       requireAi();
       const thread = await db.inboxThread.findUnique({ where: { id: body.threadId } });
       if (!thread) throw errors.notFound('Inbox thread');
@@ -239,14 +245,11 @@ export function aiRoutes(kit: RouteKit): Router {
       tags: ['AI'],
       summary: 'List AI actions and pending approvals',
       access: { type: 'permission', permission: 'ai.read' },
-      query: z.object({
-        taskType: z.enum(['INBOX_CLASSIFY', 'INBOX_SUMMARIZE', 'REPLY_DRAFT', 'MEETING_SCORE', 'LEAD_DETECT', 'GROWTH_INSIGHT']).optional(),
-        pendingApproval: z.string().optional(),
-      }),
-      response: { status: 200, schema: z.array(aiActionSchema) },
+      query: aiActionListQuerySchema,
+      response: { status: 200, schema: aiActionPageSchema },
     },
     async ({ query }) => {
-      const where: any = {};
+      const where: Prisma.AiActionWhereInput = {};
       if (query.taskType) where.taskType = query.taskType;
       if (query.pendingApproval === 'true') {
         where.approvalLevel = { in: ['ALWAYS_HUMAN', 'DEFAULT_HUMAN'] };
@@ -254,8 +257,12 @@ export function aiRoutes(kit: RouteKit): Router {
         where.rejectionReason = null;
       }
 
-      const actions = await db.aiAction.findMany({ where, orderBy: { createdAt: 'desc' } });
-      return actions.map((a) => ({
+      const actions = await db.aiAction.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...pageArgs(query),
+      });
+      return toPage(actions, query.limit, (a) => ({
         ...a,
         inputData: a.inputData as Record<string, unknown>,
         outputData: a.outputData as Record<string, unknown>,
@@ -349,8 +356,8 @@ export function aiRoutes(kit: RouteKit): Router {
           name: body.name,
           description: body.description,
           trigger: body.trigger,
-          conditions: body.conditions as any,
-          actions: body.actions as any,
+          conditions: body.conditions as Prisma.InputJsonValue,
+          actions: body.actions as Prisma.InputJsonValue,
           delaySeconds: body.delaySeconds,
           isEnabled: body.isEnabled,
           approvalLevel: body.approvalLevel,
@@ -389,8 +396,8 @@ export function aiRoutes(kit: RouteKit): Router {
           name: body.name,
           description: body.description,
           trigger: body.trigger,
-          conditions: body.conditions ? (body.conditions as any) : undefined,
-          actions: body.actions ? (body.actions as any) : undefined,
+          conditions: body.conditions ? (body.conditions as Prisma.InputJsonValue) : undefined,
+          actions: body.actions ? (body.actions as Prisma.InputJsonValue) : undefined,
           delaySeconds: body.delaySeconds,
           isEnabled: body.isEnabled,
           approvalLevel: body.approvalLevel,
@@ -432,8 +439,8 @@ export function aiRoutes(kit: RouteKit): Router {
             ruleId: rule.id,
             trigger: rule.trigger,
             status,
-            payload: body.payload as any,
-            executionResult: { actionsDispatched: rule.actions },
+            payload: body.payload as Prisma.InputJsonValue,
+            executionResult: { actionsDispatched: rule.actions } as Prisma.InputJsonValue,
             completedAt: status === 'SUCCESS' ? new Date() : null,
           },
         });
@@ -458,21 +465,21 @@ export function aiRoutes(kit: RouteKit): Router {
       tags: ['Workflows'],
       summary: 'List execution audit log of workflow runs',
       access: { type: 'permission', permission: 'workflows.read' },
-      query: z.object({
-        ruleId: z.string().optional(),
-        trigger: z.enum(['INBOX_MESSAGE_RECEIVED', 'ORDER_CREATED', 'MEETING_REQUESTED', 'PROPOSAL_RECEIVED', 'LEAD_CREATED']).optional(),
-        status: z.enum(['SUCCESS', 'FAILED', 'PENDING_APPROVAL', 'REJECTED']).optional(),
-      }),
-      response: { status: 200, schema: z.array(workflowRunSchema) },
+      query: workflowRunListQuerySchema,
+      response: { status: 200, schema: workflowRunPageSchema },
     },
     async ({ query }) => {
-      const where: any = {};
+      const where: Prisma.WorkflowRunWhereInput = {};
       if (query.ruleId) where.ruleId = query.ruleId;
       if (query.trigger) where.trigger = query.trigger;
       if (query.status) where.status = query.status;
 
-      const runs = await db.workflowRun.findMany({ where, orderBy: { startedAt: 'desc' } });
-      return runs.map((r) => ({
+      const runs = await db.workflowRun.findMany({
+        where,
+        orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+        ...pageArgs(query),
+      });
+      return toPage(runs, query.limit, (r) => ({
         ...r,
         payload: r.payload as Record<string, unknown>,
         executionResult: r.executionResult as Record<string, unknown> | null,

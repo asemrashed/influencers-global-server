@@ -12,7 +12,6 @@ import {
   eventRsvpSchema,
   eventSchema,
   idParamSchema,
-  okSchema,
   prInvitationListQuerySchema,
   prInvitationPageSchema,
   prInvitationSchema,
@@ -21,10 +20,7 @@ import {
   prPackageSchema,
   rsvpListQuerySchema,
   rsvpPageSchema,
-  updateEventSchema,
-  updatePrInvitationSchema,
   updatePrPackageSchema,
-  updateRsvpStatusSchema,
 } from '@platform/shared-types';
 import { z } from 'zod';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -93,6 +89,7 @@ export function eventsRoutes(kit: RouteKit): Router {
       summary: 'Submit RSVP for an event with capacity enforcement and digital pass issuance',
       params: z.object({ slug: z.string().min(1) }),
       access: { type: 'public', reason: 'Public attendee RSVP submission' },
+      rateLimit: 'public-form',
       csrf: false,
       body: createRsvpSchema,
       response: { status: 201, schema: eventRsvpSchema },

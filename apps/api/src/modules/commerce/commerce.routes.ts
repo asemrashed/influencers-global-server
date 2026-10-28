@@ -1,18 +1,25 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { Prisma } from '../../generated/prisma/client.js';
 import {
   customerSchema,
+  customerListQuerySchema,
+  customerPageSchema,
   createCustomerBodySchema,
   updateCustomerBodySchema,
   productCategorySchema,
   createProductCategoryBodySchema,
   productSchema,
+  productListQuerySchema,
+  productPageSchema,
   createProductBodySchema,
   updateProductBodySchema,
   stockAdjustmentBodySchema,
   promoCodeSchema,
   createPromoCodeBodySchema,
   orderSchema,
+  orderListQuerySchema,
+  orderPageSchema,
   checkoutBodySchema,
   updateOrderStatusBodySchema,
   recordOrderPaymentBodySchema,
@@ -21,13 +28,18 @@ import {
   createReturnRequestBodySchema,
   decideReturnRequestBodySchema,
   invoiceSchema,
+  invoiceListQuerySchema,
+  invoicePageSchema,
   createInvoiceBodySchema,
   recordInvoicePaymentBodySchema,
   earningEntrySchema,
+  earningEntryListQuerySchema,
+  earningEntryPageSchema,
   createEarningEntryBodySchema,
   earningsSummarySchema,
 } from '@platform/shared-types';
-import { errors, AppError } from '../../lib/errors.js';
+import { errors } from '../../lib/errors.js';
+import { pageArgs, toPage } from '../../lib/pagination.js';
 import { routeFactory, type RouteKit } from '../../lib/route.js';
 
 export function commerceRoutes(kit: RouteKit): Router {
@@ -68,15 +80,12 @@ export function commerceRoutes(kit: RouteKit): Router {
       operationId: 'listStoreProducts',
       tags: ['Storefront'],
       summary: 'List storefront products',
-      access: { type: 'public', reason: 'Public storefront category catalog' },
-      query: z.object({
-        categoryId: z.string().optional(),
-        search: z.string().optional(),
-      }),
-      response: { status: 200, schema: z.array(productSchema) },
+      access: { type: 'public', reason: 'Public storefront product catalog' },
+      query: productListQuerySchema,
+      response: { status: 200, schema: productPageSchema },
     },
     async ({ query }) => {
-      const where: any = { isActive: true };
+      const where: Prisma.ProductWhereInput = { isActive: true };
       if (query.categoryId) where.categoryId = query.categoryId;
       if (query.search) {
         where.OR = [
@@ -89,10 +98,11 @@ export function commerceRoutes(kit: RouteKit): Router {
         include: {
           variants: { where: { isActive: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...pageArgs(query),
       });
 
-      return products.map((p) => ({
+      return toPage(products, query.limit, (p) => ({
         ...p,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
@@ -112,7 +122,8 @@ export function commerceRoutes(kit: RouteKit): Router {
       operationId: 'storeCheckout',
       tags: ['Storefront'],
       summary: 'Storefront checkout / order creation',
-      access: { type: 'public', reason: 'Public storefront category catalog' },
+      access: { type: 'public', reason: 'Public customer shopping cart checkout' },
+      rateLimit: 'public-form',
       body: checkoutBodySchema,
       response: { status: 201, schema: orderSchema },
     },
@@ -159,11 +170,24 @@ export function commerceRoutes(kit: RouteKit): Router {
           if (!promoCodeRow || !promoCodeRow.isActive) {
             throw errors.validation([{ path: 'promoCode', message: 'Promo code is invalid or inactive' }]);
           }
-          if (promoCodeRow.maxUses && promoCodeRow.usedCount >= promoCodeRow.maxUses) {
-            throw errors.validation([{ path: 'promoCode', message: 'Promo code has reached max uses' }]);
-          }
           if (promoCodeRow.expiresAt && promoCodeRow.expiresAt < new Date()) {
             throw errors.validation([{ path: 'promoCode', message: 'Promo code has expired' }]);
+          }
+          if (promoCodeRow.maxUses) {
+            // Atomic conditional update to guard promo code max uses against race conditions
+            const updatedPromo = await tx.$executeRaw`
+              UPDATE "PromoCode"
+              SET "usedCount" = "usedCount" + 1
+              WHERE "id" = ${promoCodeRow.id} AND "usedCount" < ${promoCodeRow.maxUses}
+            `;
+            if (updatedPromo === 0) {
+              throw errors.validation([{ path: 'promoCode', message: 'Promo code has reached max uses' }]);
+            }
+          } else {
+            await tx.promoCode.update({
+              where: { id: promoCodeRow.id },
+              data: { usedCount: { increment: 1 } },
+            });
           }
         }
 
@@ -175,14 +199,16 @@ export function commerceRoutes(kit: RouteKit): Router {
           if (!variant || !variant.isActive) {
             throw errors.notFound(`Variant ${item.variantId}`);
           }
-          if (variant.stock < item.quantity) {
-            throw errors.conflict(`Variant ${variant.sku} has insufficient stock (available: ${variant.stock})`);
-          }
 
-          await tx.productVariant.update({
-            where: { id: variant.id },
-            data: { stock: { decrement: item.quantity } },
-          });
+          // Atomic conditional stock decrement: prevents overselling under race conditions
+          const rowsUpdated = await tx.$executeRaw`
+            UPDATE "ProductVariant"
+            SET "stock" = "stock" - ${item.quantity}
+            WHERE "id" = ${variant.id} AND "stock" >= ${item.quantity}
+          `;
+          if (rowsUpdated === 0) {
+            throw errors.conflict(`Variant ${variant.sku} has insufficient stock`);
+          }
 
           await tx.inventoryMovement.create({
             data: {
@@ -211,15 +237,12 @@ export function commerceRoutes(kit: RouteKit): Router {
           } else if (promoCodeRow.discountBps) {
             discountCents = Math.round((subtotalCents * promoCodeRow.discountBps) / 10000);
           }
-          await tx.promoCode.update({
-            where: { id: promoCodeRow.id },
-            data: { usedCount: { increment: 1 } },
-          });
         }
 
         const totalCents = Math.max(0, subtotalCents - discountCents);
-        const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
+        // Link or create customer (totalSpentCents is updated when payment is recorded, not at checkout)
         let customer = await tx.customer.findUnique({ where: { email: body.customerEmail.toLowerCase() } });
         if (!customer) {
           customer = await tx.customer.create({
@@ -228,7 +251,7 @@ export function commerceRoutes(kit: RouteKit): Router {
               name: body.customerName,
               phone: body.customerPhone,
               status: 'ACTIVE',
-              totalSpentCents: totalCents,
+              totalSpentCents: 0,
               ordersCount: 1,
             },
           });
@@ -236,7 +259,6 @@ export function commerceRoutes(kit: RouteKit): Router {
           await tx.customer.update({
             where: { id: customer.id },
             data: {
-              totalSpentCents: { increment: totalCents },
               ordersCount: { increment: 1 },
               status: 'ACTIVE',
             },
@@ -250,7 +272,7 @@ export function commerceRoutes(kit: RouteKit): Router {
             customerEmail: body.customerEmail.toLowerCase(),
             customerName: body.customerName,
             customerPhone: body.customerPhone,
-            shippingAddress: body.shippingAddress as any,
+            shippingAddress: body.shippingAddress as Prisma.InputJsonValue,
             status: 'PENDING',
             paymentStatus: 'UNPAID',
             paymentMethod: body.paymentMethod,
@@ -292,14 +314,11 @@ export function commerceRoutes(kit: RouteKit): Router {
       tags: ['Commerce'],
       summary: 'List customers and leads',
       access: { type: 'permission', permission: 'customers.read' },
-      query: z.object({
-        status: z.enum(['LEAD', 'ACTIVE', 'INACTIVE', 'BLOCKED']).optional(),
-        search: z.string().optional(),
-      }),
-      response: { status: 200, schema: z.array(customerSchema) },
+      query: customerListQuerySchema,
+      response: { status: 200, schema: customerPageSchema },
     },
     async ({ query, scope, auth }) => {
-      const where: any = {};
+      const where: Prisma.CustomerWhereInput = {};
       if (scope === 'assigned') where.assignedUserId = auth.user.id;
       if (query.status) where.status = query.status;
       if (query.search) {
@@ -310,8 +329,12 @@ export function commerceRoutes(kit: RouteKit): Router {
         ];
       }
 
-      const rows = await db.customer.findMany({ where, orderBy: { createdAt: 'desc' } });
-      return rows.map((c) => ({
+      const rows = await db.customer.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...pageArgs(query),
+      });
+      return toPage(rows, query.limit, (c) => ({
         ...c,
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
@@ -594,14 +617,11 @@ export function commerceRoutes(kit: RouteKit): Router {
       tags: ['Commerce'],
       summary: 'List customer orders',
       access: { type: 'permission', permission: 'orders.read' },
-      query: z.object({
-        status: z.enum(['PENDING', 'PAID', 'FULFILLED', 'DELIVERED', 'CANCELLED', 'REFUNDED']).optional(),
-        customerId: z.string().optional(),
-      }),
-      response: { status: 200, schema: z.array(orderSchema) },
+      query: orderListQuerySchema,
+      response: { status: 200, schema: orderPageSchema },
     },
     async ({ query, scope, auth }) => {
-      const where: any = {};
+      const where: Prisma.OrderWhereInput = {};
       if (scope === 'assigned') where.assignedUserId = auth.user.id;
       if (query.status) where.status = query.status;
       if (query.customerId) where.customerId = query.customerId;
@@ -609,10 +629,11 @@ export function commerceRoutes(kit: RouteKit): Router {
       const orders = await db.order.findMany({
         where,
         include: { items: true, shipments: true, returns: true },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...pageArgs(query),
       });
 
-      return orders.map((o) => ({
+      return toPage(orders, query.limit, (o) => ({
         ...o,
         shippingAddress: o.shippingAddress as Record<string, unknown>,
         paymentDetails: o.paymentDetails as Record<string, unknown> | null,
@@ -780,15 +801,26 @@ export function commerceRoutes(kit: RouteKit): Router {
       body: recordOrderPaymentBodySchema,
       response: { status: 200, schema: orderSchema },
     },
-    async ({ params, body }) => {
+    async ({ params, body, scope, auth }) => {
       const order = await db.order.findUnique({
         where: { id: params.id },
         include: { items: true, shipments: true, returns: true },
       });
       if (!order) throw errors.notFound('Order');
+      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
+        throw errors.forbidden('Cannot manage payment for order assigned to another user');
+      }
 
       const newPaidCents = order.paidCents + body.amountCents;
       const isFullyPaid = newPaidCents >= order.totalCents;
+
+      // Update customer totalSpentCents when order is paid
+      if (order.customerId) {
+        await db.customer.update({
+          where: { id: order.customerId },
+          data: { totalSpentCents: { increment: body.amountCents } },
+        });
+      }
 
       const updated = await db.order.update({
         where: { id: params.id },
@@ -842,12 +874,15 @@ export function commerceRoutes(kit: RouteKit): Router {
       body: refundOrderBodySchema,
       response: { status: 200, schema: orderSchema },
     },
-    async ({ params, body }) => {
+    async ({ params, body, scope, auth }) => {
       const order = await db.order.findUnique({
         where: { id: params.id },
         include: { items: true, shipments: true, returns: true },
       });
       if (!order) throw errors.notFound('Order');
+      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
+        throw errors.forbidden('Cannot refund order assigned to another user');
+      }
 
       if (body.amountCents + order.refundedCents > order.paidCents) {
         throw errors.conflict(`Refund amount exceeds paid amount (paid: ${order.paidCents}, already refunded: ${order.refundedCents})`);
@@ -902,9 +937,12 @@ export function commerceRoutes(kit: RouteKit): Router {
       body: createShipmentBodySchema,
       response: { status: 200, schema: orderSchema },
     },
-    async ({ params, body }) => {
+    async ({ params, body, scope, auth }) => {
       const order = await db.order.findUnique({ where: { id: params.id } });
       if (!order) throw errors.notFound('Order');
+      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
+        throw errors.forbidden('Cannot create shipment for order assigned to another user');
+      }
 
       await db.shipment.create({
         data: {
@@ -959,9 +997,12 @@ export function commerceRoutes(kit: RouteKit): Router {
       body: createReturnRequestBodySchema,
       response: { status: 200, schema: orderSchema },
     },
-    async ({ params, body }) => {
+    async ({ params, body, scope, auth }) => {
       const order = await db.order.findUnique({ where: { id: params.id } });
       if (!order) throw errors.notFound('Order');
+      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
+        throw errors.forbidden('Cannot request return for order assigned to another user');
+      }
 
       await db.returnRequest.create({
         data: {
@@ -1013,10 +1054,16 @@ export function commerceRoutes(kit: RouteKit): Router {
       body: decideReturnRequestBodySchema,
       response: { status: 200, schema: orderSchema },
     },
-    async ({ params, body, auth }) => {
+    async ({ params, body, scope, auth }) => {
       return await db.$transaction(async (tx) => {
         const ret = await tx.returnRequest.findUnique({ where: { id: params.returnId } });
         if (!ret || ret.orderId !== params.id) throw errors.notFound('Return request');
+
+        const orderCheck = await tx.order.findUnique({ where: { id: params.id } });
+        if (!orderCheck) throw errors.notFound('Order');
+        if (scope === 'assigned' && orderCheck.assignedUserId !== auth.user.id) {
+          throw errors.forbidden('Cannot decide return for order assigned to another user');
+        }
 
         await tx.returnRequest.update({
           where: { id: params.returnId },
@@ -1093,24 +1140,22 @@ export function commerceRoutes(kit: RouteKit): Router {
       tags: ['Earnings'],
       summary: 'List client invoices',
       access: { type: 'permission', permission: 'earnings.read' },
-      query: z.object({
-        status: z.enum(['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']).optional(),
-        campaignId: z.string().optional(),
-      }),
-      response: { status: 200, schema: z.array(invoiceSchema) },
+      query: invoiceListQuerySchema,
+      response: { status: 200, schema: invoicePageSchema },
     },
     async ({ query }) => {
-      const where: any = {};
+      const where: Prisma.InvoiceWhereInput = {};
       if (query.status) where.status = query.status;
       if (query.campaignId) where.campaignId = query.campaignId;
 
       const invoices = await db.invoice.findMany({
         where,
         include: { milestones: true, payments: true },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...pageArgs(query),
       });
 
-      return invoices.map((inv) => ({
+      return toPage(invoices, query.limit, (inv) => ({
         ...inv,
         issueDate: inv.issueDate.toISOString(),
         dueDate: inv.dueDate.toISOString(),
@@ -1280,19 +1325,20 @@ export function commerceRoutes(kit: RouteKit): Router {
       tags: ['Earnings'],
       summary: 'List earnings entries across all streams',
       access: { type: 'permission', permission: 'earnings.read' },
-      query: z.object({
-        category: z.string().optional(),
-        campaignId: z.string().optional(),
-      }),
-      response: { status: 200, schema: z.array(earningEntrySchema) },
+      query: earningEntryListQuerySchema,
+      response: { status: 200, schema: earningEntryPageSchema },
     },
     async ({ query }) => {
-      const where: any = {};
+      const where: Prisma.EarningEntryWhereInput = {};
       if (query.category) where.category = query.category;
       if (query.campaignId) where.campaignId = query.campaignId;
 
-      const entries = await db.earningEntry.findMany({ where, orderBy: { createdAt: 'desc' } });
-      return entries.map((e) => ({
+      const entries = await db.earningEntry.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...pageArgs(query),
+      });
+      return toPage(entries, query.limit, (e) => ({
         ...e,
         expectedAt: e.expectedAt?.toISOString() ?? null,
         receivedAt: e.receivedAt?.toISOString() ?? null,

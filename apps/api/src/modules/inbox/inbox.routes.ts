@@ -38,6 +38,7 @@ export function inboxRoutes(kit: RouteKit): Router {
       summary: 'Submit public collaboration or booking inquiry',
       description: 'Public form submission. Rate limited and protected by honeypot.',
       access: { type: 'public', reason: 'Public booking and collaboration submission' },
+      rateLimit: 'public-form',
       csrf: false,
       body: publicInquirySubmissionSchema,
       response: { status: 201, schema: okSchema },

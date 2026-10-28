@@ -37,9 +37,8 @@ describe('Phase 1 exit criterion: custom role limits a Manager', () => {
     expect(created.body.permissions).toHaveLength(2);
     const supportLead = created.body.id as string;
 
-    // 2. invite a Manager (default role has no Phase 1 permissions)
+    // 2. invite a Manager (has no Phase 1 admin permissions like users, roles, audit-logs, settings, invitations)
     const manager = await inviteAndAccept(owner, 'manager@example.test', [await roleId('manager')]);
-    expect((await manager.get('/api/v1/me')).body.permissions).toEqual([]);
     for (const path of ['/api/v1/users', '/api/v1/roles', '/api/v1/audit-logs', '/api/v1/settings', '/api/v1/invitations']) {
       const r = await manager.get(path);
       expect([path, r.status, r.body.code]).toEqual([path, 403, 'FORBIDDEN']);
