@@ -1,0 +1,1387 @@
+// One PostgreSQL database per client. There is NO tenant column anywhere.
+// Conventions (see .claude/skills/db-schema): every FK indexed; createdAt/updatedAt on every
+// table except append-only AuditLog; secrets and one-time tokens stored hashed or encrypted.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+  engineType          = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum PermissionScope {
+  ALL
+  ASSIGNED
+  OWN
+}
+
+enum FileVisibility {
+  PRIVATE
+  PUBLIC
+}
+
+// ───────────── Identity and access ─────────────
+
+model User {
+  id                String     @id @default(uuid(7))
+  email             String     @unique // stored lowercase
+  name              String
+  passwordHash      String
+  status            UserStatus @default(ACTIVE)
+  passwordChangedAt DateTime   @default(now())
+
+  // Two-factor (TOTP). Secrets are AES-256-GCM encrypted with APP_ENCRYPTION_KEY.
+  twoFactorEnabled          Boolean  @default(false)
+  twoFactorSecretEnc        String?
+  twoFactorPendingSecretEnc String?
+  twoFactorLastStep         Int?
+  recoveryCodeHashes        String[]
+
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  sessions            Session[]
+  roles               UserRole[]
+  invitationsCreated  Invitation[]
+  passwordResetTokens PasswordResetToken[]
+  auditLogs           AuditLog[]
+  files               StoredFile[]
+  assignments         ManagerAssignment[]  @relation("UserAssignments")
+  createdAssignments  ManagerAssignment[]  @relation("AssignedBy")
+  assignedContacts    Contact[]            @relation("AssignedContacts")
+  createdContacts     Contact[]            @relation("CreatedContacts")
+  assignedThreads     InboxThread[]        @relation("AssignedThreads")
+  sentInboxMessages   InboxMessage[]       @relation("SentInboxMessages")
+  notifications       Notification[]
+  createdTickets      SupportTicket[]      @relation("CreatedTickets")
+  assignedTickets     SupportTicket[]      @relation("AssignedTickets")
+  ticketReplies       SupportTicketReply[]
+  assignedCampaigns   Campaign[]           @relation("AssignedCampaigns")
+  createdProposals    Proposal[]           @relation("CreatedProposals")
+  assignedMeetings    Meeting[]            @relation("AssignedMeetings")
+  assignedEvents      Event[]              @relation("AssignedEvents")
+  assignedPackages    PrPackage[]          @relation("AssignedPrPackages")
+  assignedPrInvites   PrInvitation[]       @relation("AssignedPrInvitations")
+  createdDrafts       ContentDraft[]       @relation("CreatedDrafts")
+  assignedOrders      Order[]              @relation("AssignedOrders")
+  assignedCustomers   Customer[]           @relation("AssignedCustomers")
+  createdInvoices     Invoice[]            @relation("CreatedInvoices")
+  approvedAiActions   AiAction[]           @relation("ApprovedAiActions")
+}
+
+model Session {
+  id                String   @id @default(uuid(7))
+  userId            String
+  tokenHash         String   @unique // SHA-256 of the cookie value; the raw token is never stored
+  csrfToken         String
+  twoFactorVerified Boolean  @default(false)
+  ip                String?
+  userAgent         String?
+  lastSeenAt        DateTime @default(now())
+  idleExpiresAt     DateTime
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Role {
+  id               String   @id @default(uuid(7))
+  key              String?  @unique // system roles only: super_admin, admin, manager
+  name             String   @unique
+  description      String?
+  isSystem         Boolean  @default(false)
+  isLocked         Boolean  @default(false) // Super Admin: always every permission, immutable
+  requireTwoFactor Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id          String   @id @default(uuid(7))
+  key         String   @unique // `module.action`, declared in code and synced at boot
+  module      String
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  scope        PermissionScope @default(ALL)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  userId       String
+  roleId       String
+  assignedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Invitation {
+  id          String    @id @default(uuid(7))
+  email       String
+  name        String?
+  tokenHash   String    @unique
+  roleIds     String[]
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([createdById])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid(7))
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ───────────── Phase 2: Manager Assignments & Scopes ─────────────
+
+enum AssignmentType {
+  BRAND
+  CAMPAIGN
+  PR
+}
+
+model ManagerAssignment {
+  id           String         @id @default(uuid(7))
+  userId       String
+  targetType   AssignmentType
+  targetId     String         // e.g. organization ID, contact ID, campaign ID
+  assignedById String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  user       User  @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User? @relation("AssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, targetType, targetId])
+  @@index([userId])
+  @@index([targetType, targetId])
+}
+
+// ───────────── Phase 2: Profile, Portfolio & Media Kit ─────────────
+
+model Profile {
+  id              String   @id @default(uuid(7))
+  fullName        String
+  displayName     String
+  bio             String?  // Rich/plain bio text
+  tagline         String?
+  primaryNiche    String
+  secondaryNiches String[]
+  avatarFileId    String?
+  coverFileId     String?
+  location        String?
+  languages       String[]
+  isPublic        Boolean  @default(true)
+  allowInquiries  Boolean  @default(true)
+  allowBookings   Boolean  @default(true)
+  socialLinks     Json     @default("[]") // Array of { platform, url, handle, followerCount? }
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model PortfolioAlbum {
+  id          String   @id @default(uuid(7))
+  slug        String   @unique
+  title       String
+  description String?
+  coverFileId String?
+  isPublic    Boolean  @default(true)
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items PortfolioItem[]
+}
+
+model PortfolioItem {
+  id          String   @id @default(uuid(7))
+  albumId     String
+  title       String
+  description String?
+  fileId      String?
+  externalUrl String?
+  clientName  String?
+  metrics     Json?    // e.g. impressions, engagements
+  tags        String[]
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  album PortfolioAlbum @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  @@index([albumId])
+}
+
+model MediaKit {
+  id             String   @id @default(uuid(7))
+  title          String
+  summary        String?
+  statsSnapshot  Json     @default("{}") // aggregated stats: reach, demographics
+  services       Json     @default("[]") // list of key services offered
+  isPublic       Boolean  @default(true)
+  pdfFileId      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model RateCardItem {
+  id           String   @id @default(uuid(7))
+  serviceName  String
+  description  String?
+  deliverables String[]
+  priceCents   Int      // integer minor units
+  currency     String   @default("USD")
+  isPublic     Boolean  @default(true)
+  orderIndex   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ───────────── Phase 2: Contacts & Public Inquiries ─────────────
+
+model Contact {
+  id             String   @id @default(uuid(7))
+  name           String
+  email          String
+  phone          String?
+  organization   String?
+  roleOrTitle    String?
+  notes          String?
+  tags           String[]
+  assignedUserId String?  // Assigned Manager / Staff
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  assignedUser User? @relation("AssignedContacts", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  createdBy    User? @relation("CreatedContacts", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([assignedUserId])
+}
+
+// ───────────── Phase 2: Inbox & In-App Notifications ─────────────
+
+enum ThreadType {
+  PUBLIC_INQUIRY
+  COLLABORATION
+  SUPPORT
+  DIRECT
+}
+
+enum ThreadStatus {
+  OPEN
+  WAITING
+  CLOSED
+  ARCHIVED
+}
+
+model InboxThread {
+  id             String       @id @default(uuid(7))
+  type           ThreadType   @default(PUBLIC_INQUIRY)
+  status         ThreadStatus @default(OPEN)
+  subject        String
+  snippet        String?
+  senderName     String
+  senderEmail    String
+  brandName      String?
+  unreadCount    Int          @default(0)
+  assignedUserId String?
+  metadata       Json?        // e.g. budget, timeline, bot-check score
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  assignedUser User?          @relation("AssignedThreads", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  messages     InboxMessage[]
+
+  @@index([status])
+  @@index([type])
+  @@index([assignedUserId])
+  @@index([senderEmail])
+}
+
+model InboxMessage {
+  id             String   @id @default(uuid(7))
+  threadId       String
+  senderId       String?  // null if incoming from public guest
+  senderName     String
+  senderEmail    String
+  isFromStaff    Boolean  @default(false)
+  body           String   // sanitized HTML or text
+  attachmentIds  String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  thread InboxThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User?        @relation("SentInboxMessages", fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([threadId])
+  @@index([senderId])
+}
+
+model Notification {
+  id        String    @id @default(uuid(7))
+  userId    String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// ───────────── Phase 2: Support Tickets ─────────────
+
+enum TicketCategory {
+  ACCOUNT
+  EVENT
+  PAYMENT
+  CAMPAIGN
+  TECHNICAL
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id             String         @id @default(uuid(7))
+  ticketNumber   Int            @default(autoincrement())
+  subject        String
+  category       TicketCategory @default(TECHNICAL)
+  priority       TicketPriority @default(MEDIUM)
+  status         TicketStatus   @default(OPEN)
+  requesterEmail String
+  requesterName  String
+  requesterId    String?        // null if guest
+  assignedUserId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  requester    User?                @relation("CreatedTickets", fields: [requesterId], references: [id], onDelete: SetNull)
+  assignedUser User?                @relation("AssignedTickets", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  replies      SupportTicketReply[]
+
+  @@index([status])
+  @@index([category])
+  @@index([requesterId])
+  @@index([assignedUserId])
+}
+
+model SupportTicketReply {
+  id            String   @id @default(uuid(7))
+  ticketId      String
+  authorId      String?  // null if requester guest
+  authorName    String
+  authorEmail   String
+  isStaff       Boolean  @default(false)
+  message       String
+  attachmentIds String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+  @@index([authorId])
+}
+
+// ───────────── Phase 3: Collaboration, Proposals & Campaigns ─────────────
+
+enum ProposalStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+model Proposal {
+  id               String         @id @default(uuid(7))
+  title            String
+  brandName        String
+  contactEmail     String
+  objectives       String?
+  deliverables     Json           @default("[]") // list of planned items
+  compensationCents Int           // integer minor units
+  currency         String         @default("USD")
+  terms            String?
+  status           ProposalStatus @default(DRAFT)
+  statusHistory    Json           @default("[]") // history log of status transitions
+  createdById      String?
+  assignedUserId   String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  createdBy    User?      @relation("CreatedProposals", fields: [createdById], references: [id], onDelete: SetNull)
+  campaign     Campaign?
+
+  @@index([status])
+  @@index([brandName])
+  @@index([createdById])
+}
+
+enum CampaignStatus {
+  PLANNING
+  ACTIVE
+  IN_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+model Campaign {
+  id             String         @id @default(uuid(7))
+  proposalId     String?        @unique
+  name           String
+  brandName      String
+  status         CampaignStatus @default(PLANNING)
+  startDate      DateTime?
+  endDate        DateTime?
+  budgetCents    Int            @default(0)
+  currency       String         @default("USD")
+  briefContent   String?        // Rich HTML brief
+  assignedUserId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  proposal     Proposal?     @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  assignedUser User?         @relation("AssignedCampaigns", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  tasks        CampaignTask[]
+  deliverables Deliverable[]
+  agreements   Agreement[]
+
+  @@index([status])
+  @@index([brandName])
+  @@index([assignedUserId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model CampaignTask {
+  id          String     @id @default(uuid(7))
+  campaignId  String
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      TaskStatus @default(TODO)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+enum DeliverableStatus {
+  PENDING
+  SUBMITTED
+  REVISION_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+model Deliverable {
+  id             String            @id @default(uuid(7))
+  campaignId     String
+  title          String
+  description    String?
+  platform       String?           // e.g. YouTube, Instagram, TikTok
+  assetFileIds   String[]
+  externalUrl    String?
+  status         DeliverableStatus @default(PENDING)
+  feedback       String?
+  dueDate        DateTime?
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([status])
+}
+
+enum AgreementStatus {
+  DRAFT
+  PENDING_SIGNATURE
+  SIGNED
+  EXPIRED
+}
+
+model Agreement {
+  id             String          @id @default(uuid(7))
+  campaignId     String
+  title          String
+  content        String          // Terms & text
+  status         AgreementStatus @default(DRAFT)
+  signatureData  String?         // E-signature token/hash/data
+  signedAt       DateTime?
+  signerName     String?
+  signerEmail    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([status])
+}
+
+// ───────────── Phase 3: Meetings & Scheduling ─────────────
+
+enum MeetingStatus {
+  SCHEDULED
+  CONFIRMED
+  RESCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model Meeting {
+  id             String        @id @default(uuid(7))
+  title          String
+  description    String?
+  guestName      String
+  guestEmail     String
+  startTime      DateTime
+  endTime        DateTime
+  meetingUrl     String?       // Google Meet, Zoom, etc.
+  status         MeetingStatus @default(SCHEDULED)
+  assignedUserId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  assignedUser User? @relation("AssignedMeetings", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  @@index([startTime, endTime])
+  @@index([status])
+  @@index([assignedUserId])
+}
+
+model AvailabilitySlot {
+  id        String   @id @default(uuid(7))
+  dayOfWeek Int      // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+  startTime String   // "09:00" (HH:mm)
+  endTime   String   // "17:00" (HH:mm)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ───────────── Phase 4: Events, RSVPs & PR Packages ─────────────
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+model Event {
+  id               String      @id @default(uuid(7))
+  slug             String      @unique
+  title            String
+  description      String?     // Rich HTML text
+  venue            String
+  locationUrl      String?
+  startDate        DateTime
+  endDate          DateTime
+  dressCode        String?
+  capacity         Int
+  currentAttendees Int         @default(0)
+  allowPlusOnes    Boolean     @default(false)
+  isPublic         Boolean     @default(false)
+  status           EventStatus @default(DRAFT)
+  coverFileId      String?
+  assignedUserId   String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  assignedUser User?       @relation("AssignedEvents", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  rsvps        EventRsvp[]
+
+  @@index([status])
+  @@index([startDate])
+  @@index([assignedUserId])
+}
+
+enum RsvpStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  WAITLISTED
+}
+
+model EventRsvp {
+  id           String     @id @default(uuid(7))
+  eventId      String
+  guestName    String
+  guestEmail   String
+  guestCompany String?
+  status       RsvpStatus @default(INVITED)
+  plusOneCount Int        @default(0)
+  plusOneNames String[]
+  ticketCode   String     @unique // Unique QR pass token
+  checkedInAt  DateTime?
+  checkedInBy  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, guestEmail])
+  @@index([eventId])
+  @@index([guestEmail])
+  @@index([ticketCode])
+}
+
+enum PrPackageStatus {
+  PREPARING
+  SHIPPED
+  IN_TRANSIT
+  DELIVERED
+  CONFIRMED
+  CANCELLED
+}
+
+model PrPackage {
+  id                  String          @id @default(uuid(7))
+  title               String
+  recipientName       String
+  recipientEmail      String?
+  shippingAddress     String
+  trackingNumber      String?
+  carrier             String?
+  status              PrPackageStatus @default(PREPARING)
+  shippedAt           DateTime?
+  deliveredAt         DateTime?
+  receivedConfirmedAt DateTime?
+  items               Json            @default("[]") // list of items included
+  notes               String?
+  assignedUserId      String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  assignedUser User? @relation("AssignedPrPackages", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([trackingNumber])
+  @@index([assignedUserId])
+}
+
+enum PrInvitationStatus {
+  SENT
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+model PrInvitation {
+  id             String             @id @default(uuid(7))
+  brandOrEvent   String
+  contactName    String
+  contactEmail   String
+  details        String?
+  date           DateTime?
+  status         PrInvitationStatus @default(SENT)
+  responseNotes  String?
+  assignedUserId String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  assignedUser User? @relation("AssignedPrInvitations", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([assignedUserId])
+}
+
+// ───────────── Phase 5: Social, Analytics & Content ─────────────
+
+enum SocialPlatform {
+  INSTAGRAM
+  FACEBOOK
+  TIKTOK
+  YOUTUBE
+  LINKEDIN
+  TELEGRAM
+  TWITTER_X
+}
+
+enum ConnectionStatus {
+  CONNECTED
+  EXPIRED
+  DISCONNECTED
+  ERROR
+}
+
+model SocialAccount {
+  id              String           @id @default(uuid(7))
+  platform        SocialPlatform
+  accountHandle   String
+  displayName     String?
+  encryptedTokens String           // AES-256-GCM encrypted access/refresh tokens
+  scopes          String[]
+  status          ConnectionStatus @default(CONNECTED)
+  followerCount   Int              @default(0)
+  isStale         Boolean          @default(false)
+  lastSyncedAt    DateTime?
+  metadata        Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  snapshots FollowerSnapshot[]
+
+  @@unique([platform, accountHandle])
+  @@index([status])
+}
+
+enum MetricSource {
+  SYNCED
+  MANUAL
+}
+
+model FollowerSnapshot {
+  id            String        @id @default(uuid(7))
+  accountId     String
+  date          DateTime      @default(now())
+  followerCount Int
+  source        MetricSource  @default(SYNCED)
+  createdAt     DateTime      @default(now())
+
+  account SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, date])
+}
+
+enum ContentStatus {
+  IDEA
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+model ContentDraft {
+  id           String         @id @default(uuid(7))
+  title        String
+  caption      String?
+  hashtags     String[]
+  platforms    SocialPlatform[]
+  mediaFileIds String[]
+  scheduledFor DateTime?
+  publishedAt  DateTime?
+  status       ContentStatus  @default(DRAFT)
+  publishError String?
+  createdById  String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  createdBy User? @relation("CreatedDrafts", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([createdById])
+}
+
+
+
+
+// ───────────── Phase 6: Customers, Commerce & Earnings ─────────────
+
+enum CustomerStatus {
+  LEAD
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FULFILLED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH_ON_DELIVERY
+  MANUAL_BANK_TRANSFER
+  OTHER_OFFLINE
+}
+
+enum InventoryAction {
+  STOCK_IN
+  STOCK_OUT
+  RESERVE
+  RELEASE
+  RETURN_RESTOCK
+  ADJUSTMENT
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  RECEIVED
+  RESTOCKED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  PAID
+}
+
+model Customer {
+  id             String         @id @default(uuid(7))
+  email          String         @unique
+  name           String
+  phone          String?
+  company        String?
+  notes          String?
+  status         CustomerStatus @default(LEAD)
+  totalSpentCents Int           @default(0)
+  ordersCount    Int            @default(0)
+  assignedUserId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  assignedUser   User?          @relation("AssignedCustomers", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  orders         Order[]
+
+  @@index([status])
+  @@index([assignedUserId])
+  @@index([totalSpentCents])
+}
+
+model ProductCategory {
+  id          String    @id @default(uuid(7))
+  slug        String    @unique
+  name        String
+  description String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+
+  @@index([sortOrder])
+}
+
+model Product {
+  id          String           @id @default(uuid(7))
+  slug        String           @unique
+  name        String
+  description String?
+  categoryId  String?
+  isActive    Boolean          @default(true)
+  imageIds    String[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  category    ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  variants    ProductVariant[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model ProductVariant {
+  id          String   @id @default(uuid(7))
+  productId   String
+  sku         String   @unique
+  title       String
+  priceCents  Int
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movements   InventoryMovement[]
+  orderItems  OrderItem[]
+
+  @@index([productId])
+  @@index([sku])
+  @@index([isActive])
+}
+
+model InventoryMovement {
+  id          String          @id @default(uuid(7))
+  variantId   String
+  quantity    Int             // positive = increase, negative = decrease
+  action      InventoryAction
+  referenceId String?         // orderId or batchId
+  reason      String?
+  actorId     String?
+  createdAt   DateTime        @default(now())
+
+  variant     ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([variantId])
+  @@index([action])
+  @@index([referenceId])
+}
+
+model PromoCode {
+  id            String    @id @default(uuid(7))
+  code          String    @unique
+  discountBps   Int?      // basis points (e.g. 1000 = 10%)
+  discountCents Int?      // flat discount in cents
+  campaignId    String?
+  affiliateName String?
+  startsAt      DateTime?
+  expiresAt     DateTime?
+  maxUses       Int?
+  usedCount     Int       @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  orders        Order[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([campaignId])
+}
+
+model Order {
+  id             String         @id @default(uuid(7))
+  orderNumber    String         @unique
+  customerId     String?
+  customerEmail  String
+  customerName   String
+  customerPhone  String?
+  shippingAddress Json
+  status         OrderStatus    @default(PENDING)
+  paymentStatus  PaymentStatus  @default(UNPAID)
+  paymentMethod  PaymentMethod  @default(CASH_ON_DELIVERY)
+  paymentDetails Json?
+  promoCodeId    String?
+  subtotalCents  Int
+  discountCents  Int            @default(0)
+  shippingCents  Int            @default(0)
+  totalCents     Int
+  paidCents      Int            @default(0)
+  refundedCents  Int            @default(0)
+  idempotencyKey String?        @unique
+  assignedUserId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  promoCode      PromoCode?     @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
+  assignedUser   User?          @relation("AssignedOrders", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  items          OrderItem[]
+  shipments      Shipment[]
+  returns        ReturnRequest[]
+
+  @@index([orderNumber])
+  @@index([customerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([assignedUserId])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id         String         @id @default(uuid(7))
+  orderId    String
+  variantId  String
+  title      String
+  sku        String
+  quantity   Int
+  unitPriceCents Int
+  totalPriceCents Int
+  createdAt  DateTime       @default(now())
+
+  order      Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([variantId])
+}
+
+model Shipment {
+  id             String    @id @default(uuid(7))
+  orderId        String
+  carrier        String
+  trackingNumber String?
+  status         String    @default("PENDING") // PENDING, SHIPPED, IN_TRANSIT, DELIVERED, FAILED
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([trackingNumber])
+}
+
+model ReturnRequest {
+  id             String       @id @default(uuid(7))
+  orderId        String
+  status         ReturnStatus @default(REQUESTED)
+  reason         String
+  restockResellable Boolean   @default(false)
+  decisionNotes  String?
+  decidedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model Invoice {
+  id             String         @id @default(uuid(7))
+  invoiceNumber  String         @unique
+  campaignId     String?
+  clientName     String
+  clientEmail    String
+  status         InvoiceStatus  @default(DRAFT)
+  issueDate      DateTime       @default(now())
+  dueDate        DateTime
+  subtotalCents  Int
+  taxCents       Int            @default(0)
+  totalCents     Int
+  paidCents      Int            @default(0)
+  notes          String?
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  createdBy      User?          @relation("CreatedInvoices", fields: [createdById], references: [id], onDelete: SetNull)
+  milestones     PaymentMilestone[]
+  payments       EarningPayment[]
+
+  @@index([invoiceNumber])
+  @@index([campaignId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model PaymentMilestone {
+  id             String          @id @default(uuid(7))
+  invoiceId      String
+  title          String
+  amountCents    Int
+  dueDate        DateTime
+  status         MilestoneStatus @default(PENDING)
+  completedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model EarningPayment {
+  id             String         @id @default(uuid(7))
+  invoiceId      String
+  amountCents    Int
+  paidAt         DateTime       @default(now())
+  paymentMethod  PaymentMethod  @default(MANUAL_BANK_TRANSFER)
+  reference      String?
+  source         MetricSource   @default(MANUAL)
+  notes          String?
+  createdAt      DateTime       @default(now())
+
+  invoice        Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([paidAt])
+  @@index([source])
+}
+
+model EarningEntry {
+  id             String         @id @default(uuid(7))
+  campaignId     String?
+  title          String
+  category       String         // CAMPAIGN_FEE, AFFILIATE, SPONSORSHIP, AD_REVENUE, MERCH, OTHER
+  amountCents    Int
+  expectedAt     DateTime?
+  receivedAt     DateTime?
+  source         MetricSource   @default(MANUAL)
+  reference      String?
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([campaignId])
+  @@index([category])
+  @@index([source])
+  @@index([receivedAt])
+}
+
+// ───────────── Phase 7: AI & Workflow Automation ─────────────
+
+enum ApprovalLevel {
+  ALWAYS_HUMAN
+  DEFAULT_HUMAN
+  AUTOMATIC
+}
+
+enum WorkflowTrigger {
+  INBOX_MESSAGE_RECEIVED
+  ORDER_CREATED
+  MEETING_REQUESTED
+  PROPOSAL_RECEIVED
+  LEAD_CREATED
+}
+
+enum WorkflowRunStatus {
+  SUCCESS
+  FAILED
+  PENDING_APPROVAL
+  REJECTED
+}
+
+enum AiTaskType {
+  INBOX_CLASSIFY
+  INBOX_SUMMARIZE
+  REPLY_DRAFT
+  MEETING_SCORE
+  LEAD_DETECT
+  GROWTH_INSIGHT
+}
+
+model AiUsage {
+  id             String     @id @default(uuid(7))
+  taskType       AiTaskType
+  promptTokens   Int        @default(0)
+  completionTokens Int      @default(0)
+  totalTokens    Int        @default(0)
+  estimatedCostUsd Float    @default(0.0)
+  actorId        String?
+  createdAt      DateTime   @default(now())
+
+  @@index([taskType])
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+model AiAction {
+  id             String         @id @default(uuid(7))
+  taskType       AiTaskType
+  inputData      Json
+  outputData     Json
+  approvalLevel  ApprovalLevel
+  approvedById   String?
+  approvedAt     DateTime?
+  rejectionReason String?
+  executedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  approvedBy     User?          @relation("ApprovedAiActions", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([taskType])
+  @@index([approvalLevel])
+  @@index([approvedById])
+  @@index([createdAt])
+}
+
+model WorkflowRule {
+  id             String          @id @default(uuid(7))
+  name           String
+  description    String?
+  trigger        WorkflowTrigger
+  conditions     Json            // e.g. [{ field: "amountCents", operator: "gt", value: 50000 }]
+  actions        Json            // e.g. [{ type: "SEND_NOTIFICATION", target: "super_admin" }]
+  delaySeconds   Int             @default(0)
+  isEnabled      Boolean         @default(true)
+  approvalLevel  ApprovalLevel   @default(ALWAYS_HUMAN)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  runs           WorkflowRun[]
+
+  @@index([trigger])
+  @@index([isEnabled])
+}
+
+model WorkflowRun {
+  id             String            @id @default(uuid(7))
+  ruleId         String
+  trigger        WorkflowTrigger
+  status         WorkflowRunStatus @default(SUCCESS)
+  payload        Json
+  executionResult Json?
+  errorMessage   String?
+  retriesCount   Int               @default(0)
+  startedAt      DateTime          @default(now())
+  completedAt    DateTime?
+
+  rule           WorkflowRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId])
+  @@index([trigger])
+  @@index([status])
+  @@index([startedAt])
+}
+
+// ───────────── Platform ─────────────
+
+model Setting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ModuleToggle {
+  key         String   @id
+  enabled     Boolean  @default(true)
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Append-only: no updatedAt, never updated or deleted by the application.
+model AuditLog {
+  id         String   @id @default(uuid(7))
+  actorId    String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  userAgent  String?
+  requestId  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model StoredFile {
+  id             String         @id @default(uuid(7))
+  key            String         @unique // provider-neutral key, never a vendor URL
+  provider       String
+  contentType    String
+  sizeBytes      Int
+  checksumSha256 String?
+  originalName   String?
+  visibility     FileVisibility @default(PRIVATE)
+  ownerId        String?
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  owner User? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+}

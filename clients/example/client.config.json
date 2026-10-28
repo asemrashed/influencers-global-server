@@ -1,0 +1,13 @@
+{
+  "name": "example",
+  "displayName": "Example Influencer",
+  "domain": "example-influencer.com",
+  "apiDomain": "api.example-influencer.com",
+  "release": "v0.1.0",
+  "uiRepo": "git@github.com:your-company/example-influencer-ui.git",
+  "uiRelease": "v0.1.0",
+  "allowedOrigins": ["https://app.example-influencer.com"],
+  "providers": { "storage": "local", "email": "", "ai": "", "payment": "" },
+  "server": { "host": "203.0.113.10", "sshUser": "deploy", "path": "/srv/platform", "service": "platform-api" },
+  "backup": { "target": "s3://example-influencer-backups", "keepDays": 14 }
+}

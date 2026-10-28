@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": ".tsc",
+    "types": [
+      "node"
+    ],
+    "tsBuildInfoFile": ".tsc/.tsbuildinfo"
+  },
+  "include": [
+    "src",
+    "scripts",
+    "tests",
+    "prisma.config.ts",
+    "vitest.config.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/shared-types"
+    },
+    {
+      "path": "../../packages/config"
+    },
+    {
+      "path": "../../packages/api-client"
+    }
+  ]
+}

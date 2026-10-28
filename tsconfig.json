@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared-types" },
+    { "path": "packages/config" },
+    { "path": "packages/api-client" },
+    { "path": "apps/api" },
+    { "path": "tools/deploy" }
+  ]
+}
