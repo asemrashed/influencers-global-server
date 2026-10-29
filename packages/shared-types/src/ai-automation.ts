@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { pageOf, paginationQuerySchema } from './common.js';
+import { emailSchema, plainText } from './common.js';
 
 export const approvalLevelSchema = z.enum(['ALWAYS_HUMAN', 'DEFAULT_HUMAN', 'AUTOMATIC']);
 export type ApprovalLevel = z.infer<typeof approvalLevelSchema>;
@@ -49,7 +49,7 @@ export type AiAction = z.infer<typeof aiActionSchema>;
 
 export const decideAiActionBodySchema = z.object({
   action: z.enum(['APPROVE', 'REJECT']),
-  rejectionReason: z.string().optional(),
+  rejectionReason: plainText(1, 1000).optional(),
 });
 export type DecideAiActionBody = z.infer<typeof decideAiActionBodySchema>;
 
@@ -64,7 +64,7 @@ export const summarizeInboxBodySchema = z.object({
 
 export const draftReplyBodySchema = z.object({
   threadId: z.string(),
-  contextNotes: z.string().optional(),
+  contextNotes: plainText(1, 2000).optional(),
 });
 
 export const scoreMeetingBodySchema = z.object({
@@ -73,9 +73,9 @@ export const scoreMeetingBodySchema = z.object({
 
 export const detectLeadBodySchema = z.object({
   sourceType: z.enum(['INBOX_MESSAGE', 'COMMENT', 'DIRECT_INQUIRY']),
-  content: z.string().min(1),
-  contactEmail: z.string().email().optional(),
-  contactName: z.string().optional(),
+  content: z.string().min(1).max(10_000),
+  contactEmail: emailSchema.optional(),
+  contactName: plainText(1, 120).optional(),
 });
 
 // Workflow Rules & Runs
@@ -94,13 +94,43 @@ export const workflowRuleSchema = z.object({
 });
 export type WorkflowRule = z.infer<typeof workflowRuleSchema>;
 
+/**
+ * The ONLY actions a workflow can perform. Anything not listed here cannot be saved, so a rule can never
+ * claim to do something the server cannot do. Text is fixed in the rule: inbound content is never templated
+ * into an email, so a stranger's message cannot steer what the system sends.
+ */
+export const workflowActionSchema = z
+  .object({
+    type: z.literal('SEND_EMAIL'),
+    to: emailSchema.optional().describe('A fixed recipient'),
+    toPayloadField: z
+      .string()
+      .regex(/^[A-Za-z][A-Za-z0-9_]{0,49}$/)
+      .optional()
+      .describe('Or: the name of a payload field that holds the recipient address, e.g. customerEmail'),
+    subject: plainText(1, 200),
+    text: plainText(1, 5000),
+  })
+  .refine((a) => Boolean(a.to) !== Boolean(a.toPayloadField), 'Provide exactly one of "to" or "toPayloadField"')
+  .meta({ id: 'WorkflowAction' });
+export type WorkflowAction = z.infer<typeof workflowActionSchema>;
+
+export const workflowConditionSchema = z
+  .object({
+    field: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,49}$/),
+    operator: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains']),
+    value: z.union([z.string().max(500), z.number(), z.boolean()]),
+  })
+  .meta({ id: 'WorkflowCondition' });
+export type WorkflowCondition = z.infer<typeof workflowConditionSchema>;
+
 export const createWorkflowRuleBodySchema = z.object({
-  name: z.string().min(1),
-  description: z.string().optional(),
+  name: plainText(1, 120),
+  description: plainText(1, 1000).optional(),
   trigger: workflowTriggerSchema,
-  conditions: z.array(z.record(z.string(), z.unknown())).default([]),
-  actions: z.array(z.record(z.string(), z.unknown())).min(1),
-  delaySeconds: z.number().int().nonnegative().default(0),
+  conditions: z.array(workflowConditionSchema).max(10).default([]),
+  actions: z.array(workflowActionSchema).min(1).max(5),
+  delaySeconds: z.number().int().min(0).max(30 * 24 * 3600).default(0),
   isEnabled: z.boolean().default(true),
   approvalLevel: approvalLevelSchema.default('ALWAYS_HUMAN'),
 });
@@ -123,30 +153,15 @@ export const workflowRunSchema = z.object({
 });
 export type WorkflowRun = z.infer<typeof workflowRunSchema>;
 
+export const decideWorkflowRunBodySchema = z.object({
+  action: z.enum(['APPROVE', 'REJECT']),
+  reason: plainText(1, 1000).optional(),
+});
+export type DecideWorkflowRunBody = z.infer<typeof decideWorkflowRunBodySchema>;
+
 export const triggerWorkflowBodySchema = z.object({
   trigger: workflowTriggerSchema,
   payload: z.record(z.string(), z.unknown()),
 });
 export type TriggerWorkflowBody = z.infer<typeof triggerWorkflowBodySchema>;
-
-// ─────────────────────────────────────────────────────────────
-// PAGINATED SCHEMAS & LIST QUERIES
-// ─────────────────────────────────────────────────────────────
-
-export const aiActionListQuerySchema = paginationQuerySchema.extend({
-  taskType: aiTaskTypeSchema.optional(),
-  pendingApproval: z.string().optional(),
-});
-export type AiActionListQuery = z.infer<typeof aiActionListQuerySchema>;
-export const aiActionPageSchema = pageOf(aiActionSchema, 'AiActionPage');
-export type AiActionPage = z.infer<typeof aiActionPageSchema>;
-
-export const workflowRunListQuerySchema = paginationQuerySchema.extend({
-  ruleId: z.string().optional(),
-  trigger: workflowTriggerSchema.optional(),
-  status: workflowRunStatusSchema.optional(),
-});
-export type WorkflowRunListQuery = z.infer<typeof workflowRunListQuerySchema>;
-export const workflowRunPageSchema = pageOf(workflowRunSchema, 'WorkflowRunPage');
-export type WorkflowRunPage = z.infer<typeof workflowRunPageSchema>;
 

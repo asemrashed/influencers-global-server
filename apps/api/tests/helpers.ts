@@ -6,6 +6,7 @@ import { loadApiEnv, type ApiEnv } from '@platform/config';
 import { createApp } from '../src/app.js';
 import { bootstrap } from '../src/bootstrap.js';
 import { buildContainer, type Container } from '../src/container.js';
+import type { Providers } from '../src/providers/index.js';
 import { hashPassword } from '../src/modules/auth/auth.service.js';
 import { TEST_DB_URL } from './global-setup.js';
 
@@ -41,8 +42,8 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-export async function createTestApp(overrides: Record<string, string> = {}, opts: { jobsSchema?: string } = {}): Promise<TestApp> {
-  const c = buildContainer(testEnv(overrides), opts.jobsSchema ? { jobsSchema: opts.jobsSchema } : {});
+export async function createTestApp(overrides: Record<string, string> = {}, opts: { jobsSchema?: string; providers?: Partial<Providers> } = {}): Promise<TestApp> {
+  const c = buildContainer(testEnv(overrides), { ...(opts.jobsSchema ? { jobsSchema: opts.jobsSchema } : {}), ...(opts.providers ? { providers: opts.providers } : {}) });
   const created = createApp(c);
   await resetDb(c.db);
   await bootstrap(c);

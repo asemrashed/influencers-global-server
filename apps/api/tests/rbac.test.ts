@@ -37,8 +37,10 @@ describe('Phase 1 exit criterion: custom role limits a Manager', () => {
     expect(created.body.permissions).toHaveLength(2);
     const supportLead = created.body.id as string;
 
-    // 2. invite a Manager (has no Phase 1 admin permissions like users, roles, audit-logs, settings, invitations)
+    // 2. invite a Manager (the default role grants business permissions only, none of the access-control ones)
     const manager = await inviteAndAccept(owner, 'manager@example.test', [await roleId('manager')]);
+    const held = (await manager.get('/api/v1/me')).body.permissions.map((p: { permission: string }) => p.permission);
+    expect(held.filter((p: string) => /^(users|roles|audit|settings)\./.test(p))).toEqual([]);
     for (const path of ['/api/v1/users', '/api/v1/roles', '/api/v1/audit-logs', '/api/v1/settings', '/api/v1/invitations']) {
       const r = await manager.get(path);
       expect([path, r.status, r.body.code]).toEqual([path, 403, 'FORBIDDEN']);
@@ -167,7 +169,10 @@ describe('Super Admin protection', () => {
       a.put(`/api/v1/users/${bId}/roles`, { roleIds: [admin] }),
       b.put(`/api/v1/users/${aId}/roles`, { roleIds: [admin] }),
     ]);
-    expect([r1.status, r2.status].sort()).toEqual([200, 409]);
+    // Exactly one demotion succeeds (200); the loser either gets 409 (LAST_SUPER_ADMIN) or 403 (was just demoted)
+    const statuses = [r1.status, r2.status];
+    expect(statuses).toContain(200);
+    expect(statuses.some((s) => s === 409 || s === 403)).toBe(true);
     expect(await t.c.db.user.count({ where: { status: 'ACTIVE', roles: { some: { role: { isLocked: true } } } } })).toBe(1);
   });
 });
@@ -191,7 +196,9 @@ describe('revocation, scope and IDOR', () => {
     const i1 = await inviteAndAccept(owner, 'i1@example.test', [inviter]);
     const i2 = await inviteAndAccept(owner, 'i2@example.test', [inviter]);
 
-    const mine = await i1.post('/api/v1/invitations', { email: 'guest@example.test', roleIds: [await roleId('manager')] });
+    // an inviter can only hand out roles no stronger than their own, so the invitees get a role with no permissions
+    const empty = (await owner.post('/api/v1/roles', { name: 'No Access', permissions: [] })).body.id as string;
+    const mine = await i1.post('/api/v1/invitations', { email: 'guest@example.test', roleIds: [empty] });
     expect(mine.status).toBe(201);
     expect((await i1.get('/api/v1/invitations')).body.items.map((i: { email: string }) => i.email)).toEqual(['guest@example.test']);
     expect((await i2.get('/api/v1/invitations')).body.items).toEqual([]);
@@ -257,7 +264,7 @@ describe('settings and module toggles', () => {
     const { client: owner } = await signInWithTwoFactor(t, 'owner@example.test', 'super_admin');
     // No Phase 1 route belongs to a toggleable module yet, so exercise the guard with a probe route.
     const probe = express.Router();
-    routeFactory({ c: t.c, registry: [], authLimiter: (_q, _s, n) => n() }, probe)(
+    routeFactory({ c: t.c, registry: [], authLimiter: (_q, _s, n) => n(), publicLimiter: (_q, _s, n) => n() }, probe)(
       { method: 'get', path: '/probe', operationId: 'probe', summary: 'probe', tags: ['t'], access: { type: 'public', reason: 'test' }, module: 'inbox', response: { status: 204 } },
       async () => undefined,
     );

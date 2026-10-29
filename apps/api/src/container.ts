@@ -17,10 +17,10 @@ export interface Container {
   modules: ModuleService;
 }
 
-export function buildContainer(env: ApiEnv, overrides: Partial<Pick<Container, 'logger' | 'db'>> & { jobsSchema?: string } = {}): Container {
+export function buildContainer(env: ApiEnv, overrides: Partial<Pick<Container, 'logger' | 'db'>> & { jobsSchema?: string; providers?: Partial<Providers> } = {}): Container {
   const logger = overrides.logger ?? createLogger(env);
   const db = overrides.db ?? createPrisma(env.DATABASE_URL);
-  const providers = createProviders(env, logger);
+  const providers = { ...createProviders(env, logger), ...overrides.providers };
   return {
     env,
     logger,

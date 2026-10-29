@@ -63,7 +63,7 @@ describe('no data leakage', () => {
 
   it('response schemas strip fields a handler forgot to map (raw ORM rows cannot leak)', async () => {
     const probe = express.Router();
-    routeFactory({ c: t.c, registry: [], authLimiter: (_q, _s, n) => n() }, probe)(
+    routeFactory({ c: t.c, registry: [], authLimiter: (_q, _s, n) => n(), publicLimiter: (_q, _s, n) => n() }, probe)(
       { method: 'get', path: '/leaky', operationId: 'leaky', summary: 's', tags: ['t'], access: { type: 'public', reason: 'test' }, response: { status: 200, schema: z.object({ id: z.string() }) } },
       async () => ({ id: '1', passwordHash: '$argon2id$secret', tokenHash: 'abc' }) as { id: string },
     );
@@ -73,7 +73,7 @@ describe('no data leakage', () => {
 
   it('turns unexpected errors into a generic 500 without leaking internals', async () => {
     const probe = express.Router();
-    routeFactory({ c: t.c, registry: [], authLimiter: (_q, _s, n) => n() }, probe)(
+    routeFactory({ c: t.c, registry: [], authLimiter: (_q, _s, n) => n(), publicLimiter: (_q, _s, n) => n() }, probe)(
       { method: 'get', path: '/boom', operationId: 'boom', summary: 's', tags: ['t'], access: { type: 'public', reason: 'test' }, response: { status: 204 } },
       async () => { throw new Error('connect ECONNREFUSED postgres://admin:hunter2@db:5432'); },
     );

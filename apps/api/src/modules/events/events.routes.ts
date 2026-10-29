@@ -89,7 +89,7 @@ export function eventsRoutes(kit: RouteKit): Router {
       summary: 'Submit RSVP for an event with capacity enforcement and digital pass issuance',
       params: z.object({ slug: z.string().min(1) }),
       access: { type: 'public', reason: 'Public attendee RSVP submission' },
-      rateLimit: 'public-form',
+      rateLimit: 'public',
       csrf: false,
       body: createRsvpSchema,
       response: { status: 201, schema: eventRsvpSchema },

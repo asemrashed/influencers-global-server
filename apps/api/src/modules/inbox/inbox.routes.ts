@@ -17,6 +17,7 @@ import {
 } from '@platform/shared-types';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { pageArgs, toPage } from '../../lib/pagination.js';
+import { fireWorkflowsSafely } from '../ai/workflows.service.js';
 import { routeFactory, type RouteKit } from '../../lib/route.js';
 import { scopeWhere, withScope } from '../../lib/scope.js';
 import { sanitizeRichText } from '../../lib/sanitize.js';
@@ -38,7 +39,7 @@ export function inboxRoutes(kit: RouteKit): Router {
       summary: 'Submit public collaboration or booking inquiry',
       description: 'Public form submission. Rate limited and protected by honeypot.',
       access: { type: 'public', reason: 'Public booking and collaboration submission' },
-      rateLimit: 'public-form',
+      rateLimit: 'public',
       csrf: false,
       body: publicInquirySubmissionSchema,
       response: { status: 201, schema: okSchema },
@@ -59,7 +60,7 @@ export function inboxRoutes(kit: RouteKit): Router {
       const cleanMessage = sanitizeRichText(body.message);
       const snippet = cleanMessage.length > 100 ? `${cleanMessage.slice(0, 97)}...` : cleanMessage;
 
-      await c.db.$transaction(async (tx) => {
+      const threadId = await c.db.$transaction(async (tx) => {
         const thread = await tx.inboxThread.create({
           data: {
             type: 'PUBLIC_INQUIRY',
@@ -87,8 +88,10 @@ export function inboxRoutes(kit: RouteKit): Router {
             attachmentIds: [],
           },
         });
+        return thread.id;
       });
 
+      await fireWorkflowsSafely(c, 'INBOX_MESSAGE_RECEIVED', { threadId, senderEmail: body.email.toLowerCase(), subject: body.subject });
       return { ok: true as const };
     },
   );

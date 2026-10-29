@@ -16,7 +16,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "npm run build && npm run test -w @platform/api && npm run test -w @platform/deploy",
-    "db:generate": "npm run db:generate -w @platform/api",
+    "db:generate": "tsc -b packages/shared-types packages/config && npm run db:generate -w @platform/api",
     "db:migrate": "npm run db:migrate -w @platform/api",
     "seed": "npm run seed -w @platform/api",
     "seed:demo": "npm run seed:demo -w @platform/api",

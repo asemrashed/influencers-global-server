@@ -1,5 +1,5 @@
 # MASTER PLAN — Influencer Management Platform (Backend First)
-> Current: Phase 8 — Hardening, Audit Remediation & API Freeze
+> Current: Release 1 reviewed and fixed (see docs/REVIEW_FIXES.md). Open items are listed there.
 > Next: Deployment & Pilot Handover (see "After the backend")
 > All phases finished, tested, and documented. Read ONLY the current phase.
 
@@ -72,15 +72,13 @@ Release 1 = phases 1–8: a finished, tested, documented API deployed on one sta
 - Endpoints and jobs for: `AiProvider` adapter with usage cap; inbox classification and summaries; reply and email drafting; meeting filtering into potential meetings; lead and purchase-intent detection; comment reply suggestions and configurable auto-replies; growth recommendations; workflow rules (triggers, conditions, actions, delays, notification rules); scheduled jobs and recurring reports; enable/disable per rule; approval settings; execution logs, retries, failure notifications (see `ai-automation`)
 - Acceptance: AI off rejects every AI route; drafted replies need a human before sending; fixed approval levels cannot be relaxed; every AI and workflow run is logged; failed jobs are visible and replayable.
 
-## Phase 8 — Hardening, Audit Remediation & API Freeze ✅ COMPLETED
-- [x] **Fix 1: Concurrency & Oversell Protection**: Atomic SQL stock decrement (`UPDATE "ProductVariant" SET stock = stock - qty WHERE id = ... AND stock >= qty`), database constraint `CHECK (stock >= 0)`, promo code atomic increment with `maxUses` guard. Verified with automated 6-client concurrency race test.
-- [x] **Fix 2: Remove Fake Data Generation**: Removed arbitrary follower count increments in `/social/accounts/{id}/sync`. Truthful status reporting (`status: EXPIRED, isStale: true`) and verified fallback manual entry flow.
-- [x] **Fix 3: Fix RBAC Scoping on Order Actions**: Enforced `assigned` scope on order payments, refunds, shipments, and returns so a Manager cannot act on orders assigned to other staff. Updated stale RBAC test assertions.
-- [x] **Fix 4: Standard Cursor Pagination**: Paginated all previously unpaginated list endpoints (store products, customers, orders, invoices, earnings entries, AI actions, workflow runs) using `pageOf` and `paginationQuerySchema` with cursor pagination.
-- [x] **Fix 5: Public Route Abuse Protection & Sanitization**: Added dedicated stricter per-IP rate limiter (`rateLimit: 'public-form'`) for checkout, inquiries, booking, and RSVP endpoints; bounded all string inputs with Zod length limits; implemented collision-resistant order numbers (`ORD-${Date.now()}-${randomString}}`).
-- [x] **Fix 6: Safe Capabilities & Human In The Loop**: Guarded AI adapter execution with 503 `CAPABILITY_DISABLED` when disabled; human approval workflow enforced for outgoing replies and workflow actions.
-- [x] **Fix 7: Quality & Build Lifecycle**: Fixed all 34 ESLint errors (0 errors, 0 warnings); eliminated loose `any` casts; fixed CI fresh clone build order (`npm run build` prior to `npm run db:generate`).
-- [x] **API Freeze & Report**: Regenerated OpenAPI spec and `@platform/api-client`, verified clean typecheck (`tsc -b`), full deploy plan tests pass, and documented audit fixes.
+## Phase 8 — Hardening, API freeze and staging ✅ DONE (see docs/PHASE8_REPORT.md)
+- [x] Security review, authorization and data-isolation tests, payment-handling and job tests, performance check on realistic data
+- [x] Review the whole API for UI-agnostic shape and consistent naming; then freeze `/api/v1` and tag the release
+- [x] Backup and restore drill; Cloudinary → S3 copy-and-verify procedure rehearsed
+- [x] Usage, deployment, backup, recovery and maintenance documentation; handover checklist
+- [x] Deploy to a staging Hostinger VPS; run all flow scripts against it as the smoke test; update-preserves-`clients/<name>/` test
+- [x] Full phase checklist passes; write a short "UI integration guide" (auth and CSRF flow, `/me`, pagination, errors, uploads) for UI builders
 
 ---
 

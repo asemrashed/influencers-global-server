@@ -85,6 +85,11 @@ export const errorHandler = (c: Container): ErrorRequestHandler => (err: unknown
     res.status(400).json({ code: 'VALIDATION_FAILED', message: 'Malformed JSON body', requestId: req.requestId });
     return;
   }
+  // A unique-constraint race that a handler did not pre-empt is a conflict, not a server fault.
+  if ((err as { code?: string })?.code === 'P2002') {
+    res.status(409).json({ code: 'CONFLICT', message: 'The resource already exists', requestId: req.requestId });
+    return;
+  }
   c.logger.error({ err, requestId: req.requestId, path: req.path, method: req.method }, 'unhandled error');
   res.status(500).json({ code: 'INTERNAL', message: 'Something went wrong', requestId: req.requestId });
 };

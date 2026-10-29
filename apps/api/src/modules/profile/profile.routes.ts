@@ -5,6 +5,7 @@ import {
   createRateCardItemSchema,
   idParamSchema,
   mediaKitSchema,
+  pageOf,
   paginationQuerySchema,
   portfolioAlbumDetailSchema,
   portfolioAlbumPageSchema,
@@ -91,15 +92,17 @@ export function profileRoutes(kit: RouteKit): Router {
       tags: ['Public', 'Portfolio'],
       summary: 'List public portfolio albums',
       access: { type: 'public', reason: 'Public portfolio showcase' },
-      response: { status: 200, schema: z.array(portfolioAlbumSchema) },
+      query: paginationQuerySchema,
+      response: { status: 200, schema: pageOf(portfolioAlbumSchema, 'PortfolioAlbumPage') },
     },
-    async () => {
+    async ({ query }) => {
       const albums = await c.db.portfolioAlbum.findMany({
         where: { isPublic: true },
         include: { _count: { select: { items: true } } },
-        orderBy: [{ orderIndex: 'asc' }, { createdAt: 'desc' }],
+        ...pageArgs(query),
+        orderBy: [{ orderIndex: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
       });
-      return albums.map((a) => ({
+      return toPage(albums, query.limit, (a) => ({
         id: a.id,
         slug: a.slug,
         title: a.title,

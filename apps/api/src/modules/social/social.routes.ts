@@ -108,7 +108,7 @@ export function socialRoutes(kit: RouteKit): Router {
           data: {
             accountId: acc.id,
             followerCount: body.initialFollowerCount,
-            source: 'SYNCED',
+            source: 'MANUAL',
           },
         });
 
@@ -144,54 +144,10 @@ export function socialRoutes(kit: RouteKit): Router {
     },
     async ({ params }) => {
       const account = await c.db.socialAccount.findUnique({ where: { id: params.id } });
-      if (!account) {
-        throw errors.notFound('Social account not found');
-      }
-
-      // Check if credentials/connection expired
-      if (account.status === 'EXPIRED') {
-        const staleAccount = await c.db.socialAccount.update({
-          where: { id: account.id },
-          data: { isStale: true },
-        });
-        return {
-          id: staleAccount.id,
-          platform: staleAccount.platform,
-          accountHandle: staleAccount.accountHandle,
-          displayName: staleAccount.displayName,
-          scopes: staleAccount.scopes,
-          status: staleAccount.status,
-          followerCount: staleAccount.followerCount,
-          isStale: true,
-          lastSyncedAt: staleAccount.lastSyncedAt ? staleAccount.lastSyncedAt.toISOString() : null,
-          createdAt: staleAccount.createdAt.toISOString(),
-          updatedAt: staleAccount.updatedAt.toISOString(),
-        };
-      }
-
-      // Automated live platform sync requires direct official OAuth / Graph API integration.
-      // Rather than fabricating follower counts or faking SYNCED metrics, mark stale and require manual entry fallback.
-      const updated = await c.db.socialAccount.update({
-        where: { id: account.id },
-        data: {
-          isStale: true,
-          status: 'EXPIRED',
-        },
-      });
-
-      return {
-        id: updated.id,
-        platform: updated.platform,
-        accountHandle: updated.accountHandle,
-        displayName: updated.displayName,
-        scopes: updated.scopes,
-        status: updated.status,
-        followerCount: updated.followerCount,
-        isStale: true,
-        lastSyncedAt: updated.lastSyncedAt ? updated.lastSyncedAt.toISOString() : null,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-      };
+      if (!account) throw errors.notFound('Social account');
+      // No platform adapter is installed, so nothing can be fetched. Inventing a number and labelling it SYNCED would
+      // poison the analytics; report the truth instead. Use manual-entry for figures a person typed in.
+      throw errors.capabilityDisabled('Live social sync (no platform integration is installed; use manual entry)');
     },
   );
 
@@ -449,44 +405,9 @@ export function socialRoutes(kit: RouteKit): Router {
         throw errors.notFound('Content draft not found');
       }
 
-      const resultsPerPlatform: Record<string, { success: boolean; error?: string; postId?: string }> = {};
-
-      for (const platform of draft.platforms) {
-        // Look up connected account for this platform
-        const account = await c.db.socialAccount.findFirst({
-          where: { platform, status: 'CONNECTED' },
-        });
-
-        if (!account) {
-          resultsPerPlatform[platform] = {
-            success: false,
-            error: `No connected active account found for ${platform}`,
-          };
-        } else {
-          // Success
-          resultsPerPlatform[platform] = {
-            success: true,
-            postId: `post_${platform.toLowerCase()}_${Date.now()}`,
-          };
-        }
-      }
-
-      const hasFailures = Object.values(resultsPerPlatform).some((r) => !r.success);
-      const allFailed = Object.values(resultsPerPlatform).every((r) => !r.success);
-
-      await c.db.contentDraft.update({
-        where: { id: draft.id },
-        data: {
-          status: allFailed ? 'FAILED' : 'PUBLISHED',
-          publishedAt: allFailed ? null : new Date(),
-          publishError: hasFailures ? 'One or more platforms failed to publish' : null,
-        },
-      });
-
-      return {
-        success: !allFailed,
-        resultsPerPlatform: resultsPerPlatform as never,
-      };
+      // Publishing needs a platform adapter (OAuth + each network's posting API), and none is installed. Pretending
+      // a post went out (with an invented post id) would be worse than failing: the draft stays a DRAFT, untouched.
+      throw errors.capabilityDisabled('Publishing to social platforms (no platform integration is installed)');
     },
   );
 

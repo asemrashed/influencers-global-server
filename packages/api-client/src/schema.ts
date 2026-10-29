@@ -2025,7 +2025,9 @@ export interface paths {
         put?: never;
         /**
          * Storefront checkout / order creation
-         * @description Public: Public customer shopping cart checkout
+         * @description Offline payment methods only. Send an `idempotencyKey` to make retries safe: the same key returns the original order. Stock and promo-code usage are claimed atomically, so concurrent buyers can never oversell.
+         *
+         *     Public: Anonymous storefront checkout; rate limited per IP, offline payment only
          */
         post: operations["storeCheckout"];
         delete?: never;
@@ -2043,7 +2045,7 @@ export interface paths {
         };
         /**
          * List storefront products
-         * @description Public: Public storefront product catalog
+         * @description Public: Public storefront category catalog
          */
         get: operations["listStoreProducts"];
         put?: never;
@@ -2332,6 +2334,26 @@ export interface paths {
         get: operations["listWorkflowRuns"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/runs/{id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve (and execute) or reject a workflow run that is waiting for a human
+         * @description Requires permission `workflows.write`.
+         */
+        post: operations["decideWorkflowRun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2895,32 +2917,6 @@ export interface components {
             /** @description Absent on the last page */
             nextCursor?: string;
         };
-        ProductPage: {
-            items: {
-                id: string;
-                slug: string;
-                name: string;
-                description: string | null;
-                categoryId: string | null;
-                isActive: boolean;
-                imageIds: string[];
-                variants?: {
-                    id: string;
-                    productId: string;
-                    sku: string;
-                    title: string;
-                    priceCents: number;
-                    stock: number;
-                    isActive: boolean;
-                    createdAt: string;
-                    updatedAt: string;
-                }[];
-                createdAt: string;
-                updatedAt: string;
-            }[];
-            /** @description Absent on the last page */
-            nextCursor?: string;
-        };
         ProposalPage: {
             items: {
                 id: string;
@@ -3043,6 +3039,32 @@ export interface components {
             "site.timezone": string | null;
             "site.supportEmail": string | null;
         };
+        StoreProductPage: {
+            items: {
+                id: string;
+                slug: string;
+                name: string;
+                description: string | null;
+                categoryId: string | null;
+                isActive: boolean;
+                imageIds: string[];
+                variants?: {
+                    id: string;
+                    productId: string;
+                    sku: string;
+                    title: string;
+                    priceCents: number;
+                    stock: number;
+                    isActive: boolean;
+                    createdAt: string;
+                    updatedAt: string;
+                }[];
+                createdAt: string;
+                updatedAt: string;
+            }[];
+            /** @description Absent on the last page */
+            nextCursor?: string;
+        };
         SupportTicketPage: {
             items: {
                 id: string;
@@ -3095,6 +3117,22 @@ export interface components {
         };
         /** @enum {string} */
         UserStatus: "ACTIVE" | "DISABLED";
+        WorkflowAction: {
+            /** @constant */
+            type: "SEND_EMAIL";
+            /** @description A fixed recipient */
+            to?: string;
+            /** @description Or: the name of a payload field that holds the recipient address, e.g. customerEmail */
+            toPayloadField?: string;
+            subject: string;
+            text: string;
+        };
+        WorkflowCondition: {
+            field: string;
+            /** @enum {string} */
+            operator: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains";
+            value: string | number | boolean;
+        };
         WorkflowRunPage: {
             items: {
                 id: string;
@@ -3133,7 +3171,7 @@ export interface operations {
                 /** @description Opaque; pass `nextCursor` from the previous page */
                 cursor?: string;
                 taskType?: "INBOX_CLASSIFY" | "INBOX_SUMMARIZE" | "REPLY_DRAFT" | "MEETING_SCORE" | "LEAD_DETECT" | "GROWTH_INSIGHT";
-                pendingApproval?: string;
+                pendingApproval?: "true" | "false";
             };
             header?: never;
             path?: never;
@@ -3571,7 +3609,6 @@ export interface operations {
                     /** @enum {string} */
                     sourceType: "INBOX_MESSAGE" | "COMMENT" | "DIRECT_INQUIRY";
                     content: string;
-                    /** Format: email */
                     contactEmail?: string;
                     contactName?: string;
                 };
@@ -8821,6 +8858,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Error codes: NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Error codes: RATE_LIMITED */
             429: {
                 headers: {
@@ -8953,6 +9008,24 @@ export interface operations {
             };
             /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, FORBIDDEN, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: CONFLICT */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9093,6 +9166,24 @@ export interface operations {
             };
             /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, FORBIDDEN, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: CONFLICT */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9241,6 +9332,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Error codes: NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Error codes: RATE_LIMITED */
             429: {
                 headers: {
@@ -9376,6 +9485,24 @@ export interface operations {
             };
             /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, FORBIDDEN, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: CONFLICT */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11707,7 +11834,11 @@ export interface operations {
     };
     listPublicPortfolioAlbums: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                /** @description Opaque; pass `nextCursor` from the previous page */
+                cursor?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11720,18 +11851,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        id: string;
-                        slug: string;
-                        title: string;
-                        description: string | null;
-                        coverFileId: string | null;
-                        isPublic: boolean;
-                        orderIndex: number;
-                        itemCount: number;
-                        createdAt: string;
-                        updatedAt: string;
-                    }[];
+                    "application/json": components["schemas"]["PortfolioAlbumPage"];
+                };
+            };
+            /** @description Error codes: VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Error codes: RATE_LIMITED */
@@ -13138,18 +13267,11 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: email */
                     customerEmail: string;
                     customerName: string;
                     customerPhone?: string;
                     shippingAddress: {
-                        street: string;
-                        city: string;
-                        state?: string;
-                        postalCode?: string;
-                        country: string;
-                    } & {
-                        [key: string]: unknown;
+                        [key: string]: string;
                     };
                     items: {
                         variantId: string;
@@ -13258,6 +13380,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Error codes: NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Error codes: RATE_LIMITED */
             429: {
                 headers: {
@@ -13299,7 +13439,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductPage"];
+                    "application/json": components["schemas"]["StoreProductPage"];
                 };
             };
             /** @description Error codes: VALIDATION_FAILED */
@@ -14505,12 +14645,8 @@ export interface operations {
                     /** @enum {string} */
                     trigger: "INBOX_MESSAGE_RECEIVED" | "ORDER_CREATED" | "MEETING_REQUESTED" | "PROPOSAL_RECEIVED" | "LEAD_CREATED";
                     /** @default [] */
-                    conditions?: {
-                        [key: string]: unknown;
-                    }[];
-                    actions: {
-                        [key: string]: unknown;
-                    }[];
+                    conditions?: components["schemas"]["WorkflowCondition"][];
+                    actions: components["schemas"]["WorkflowAction"][];
                     /** @default 0 */
                     delaySeconds?: number;
                     /** @default true */
@@ -14615,12 +14751,8 @@ export interface operations {
                     /** @enum {string} */
                     trigger?: "INBOX_MESSAGE_RECEIVED" | "ORDER_CREATED" | "MEETING_REQUESTED" | "PROPOSAL_RECEIVED" | "LEAD_CREATED";
                     /** @default [] */
-                    conditions?: {
-                        [key: string]: unknown;
-                    }[];
-                    actions?: {
-                        [key: string]: unknown;
-                    }[];
+                    conditions?: components["schemas"]["WorkflowCondition"][];
+                    actions?: components["schemas"]["WorkflowAction"][];
                     /** @default 0 */
                     delaySeconds?: number;
                     /** @default true */
@@ -14753,6 +14885,116 @@ export interface operations {
             };
             /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, FORBIDDEN */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: RATE_LIMITED */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: INTERNAL */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    decideWorkflowRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    action: "APPROVE" | "REJECT";
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ruleId: string;
+                        /** @enum {string} */
+                        trigger: "INBOX_MESSAGE_RECEIVED" | "ORDER_CREATED" | "MEETING_REQUESTED" | "PROPOSAL_RECEIVED" | "LEAD_CREATED";
+                        /** @enum {string} */
+                        status: "SUCCESS" | "FAILED" | "PENDING_APPROVAL" | "REJECTED";
+                        payload: {
+                            [key: string]: unknown;
+                        };
+                        executionResult: {
+                            [key: string]: unknown;
+                        } | null;
+                        errorMessage: string | null;
+                        retriesCount: number;
+                        startedAt: string;
+                        completedAt: string | null;
+                    };
+                };
+            };
+            /** @description Error codes: VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: UNAUTHENTICATED */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, FORBIDDEN, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: CONFLICT */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -43,7 +43,7 @@ export function createApp(c: Container): CreatedApp {
     c,
     registry,
     authLimiter: createLimiter(c, c.env.RATE_LIMIT_AUTH_PER_MIN, 'auth'),
-    publicFormLimiter: createLimiter(c, 30, 'public-form'),
+    publicLimiter: createLimiter(c, c.env.RATE_LIMIT_PUBLIC_PER_MIN, 'public'),
   };
 
   app.use(requestId);

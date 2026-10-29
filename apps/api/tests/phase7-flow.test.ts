@@ -97,44 +97,40 @@ describe('Phase 7 E2E Flow — AI & Automation', () => {
       expect(approveRes.body.approvedById).not.toBeNull();
 
       // 4. Workflow Rules Engine
-      // Create automated workflow rule: on ORDER_CREATED -> send notification
+      // A rule may only use actions the server can really perform: anything else is refused at save time.
+      const unsupported = await admin.post('/api/v1/workflows/rules', {
+        name: 'Bogus', trigger: 'ORDER_CREATED', actions: [{ type: 'INTERNAL_NOTIFICATION', message: 'x' }], approvalLevel: 'AUTOMATIC',
+      });
+      expect(unsupported.status).toBe(400);
+
       const ruleRes = await admin.post('/api/v1/workflows/rules', {
-        name: 'Order Confirmation Notification',
-        description: 'Notify creator team when an order is placed',
+        name: 'Order Confirmation Email',
+        description: 'Email the buyer when an order is placed',
         trigger: 'ORDER_CREATED',
         conditions: [{ field: 'totalCents', operator: 'gt', value: 0 }],
-        actions: [{ type: 'INTERNAL_NOTIFICATION', message: 'New merchandise order placed!' }],
+        actions: [{ type: 'SEND_EMAIL', toPayloadField: 'customerEmail', subject: 'Thanks for your order', text: 'We received your order.' }],
         delaySeconds: 0,
         isEnabled: true,
         approvalLevel: 'AUTOMATIC',
       });
       expect(ruleRes.status).toBe(201);
       const rule = ruleRes.body;
-      expect(rule.trigger).toBe('ORDER_CREATED');
 
-      // Trigger workflow engine with ORDER_CREATED event
+      // This installation has no email provider and jobs are off: the run must FAIL honestly, not report SUCCESS.
       const triggerRes = await admin.post('/api/v1/workflows/trigger', {
         trigger: 'ORDER_CREATED',
-        payload: {
-          orderNumber: 'ORD-TEST-999',
-          totalCents: 15000,
-          customerEmail: 'fan@example.test',
-        },
+        payload: { orderNumber: 'ORD-TEST-999', totalCents: 15000, customerEmail: 'fan@example.test' },
       });
       expect(triggerRes.status).toBe(200);
-      expect(triggerRes.body.length).toBeGreaterThan(0);
-      const executedRun = triggerRes.body.find((r: any) => r.ruleId === rule.id);
-      expect(executedRun).toBeDefined();
-      expect(executedRun.status).toBe('SUCCESS');
-      expect(executedRun.completedAt).not.toBeNull();
+      const run = triggerRes.body.find((r: any) => r.ruleId === rule.id);
+      expect(run.status).toBe('FAILED');
+      expect(run.errorMessage).toMatch(/not configured/i);
+      expect(run.completedAt).not.toBeNull();
 
-      // Verify execution run appears in audit log
       const runsListRes = await admin.get(`/api/v1/workflows/runs?ruleId=${rule.id}`);
       expect(runsListRes.status).toBe(200);
-      expect(runsListRes.body.items.length).toBeGreaterThan(0);
-      expect(runsListRes.body.items[0].status).toBe('SUCCESS');
+      expect(runsListRes.body.items[0].status).toBe('FAILED');
     },
     60_000,
   );
 });
-

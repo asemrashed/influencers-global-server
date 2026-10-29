@@ -28,25 +28,23 @@ describe('Phase 5 E2E Flow — Social, Analytics & Dashboard Summary', () => {
     expect(connectRes.body.followerCount).toBe(150000);
     const accountId = connectRes.body.id;
 
-    // 3. Automated Sync without live OAuth credentials returns stale marker with manual fallback
+    // 3. No platform adapter is installed: sync must say so, never invent followers or a SYNCED snapshot
     const syncRes = await admin.post(`/api/v1/social/accounts/${accountId}/sync`, {});
-    expect(syncRes.status).toBe(200);
-    expect(syncRes.body.isStale).toBe(true);
+    expect(syncRes.status).toBe(503);
+    expect(syncRes.body.code).toBe('CAPABILITY_DISABLED');
+    expect((await admin.get(`/api/v1/social/accounts/${accountId}/growth`)).body.snapshots.map((s: any) => s.source)).not.toContain('SYNCED');
 
-    // 4. Manual Fallback Entry (provenance tagged as manual, no fake numbers)
+    // 4. Manual entry (provenance tagged as manual)
     const manualRes = await admin.post(`/api/v1/social/accounts/${accountId}/manual-entry`, {
       followerCount: 152000,
     });
     expect(manualRes.status).toBe(200);
     expect(manualRes.body.followerCount).toBe(152000);
-
-    // Verify growth snapshots recorded initial connected snapshot and manual fallback entry
     const growthRes = await admin.get(`/api/v1/social/accounts/${accountId}/growth`);
     expect(growthRes.status).toBe(200);
-    expect(growthRes.body.snapshots.length).toBeGreaterThanOrEqual(2);
     const sources = growthRes.body.snapshots.map((s: any) => s.source);
-    expect(sources).toContain('SYNCED');
     expect(sources).toContain('MANUAL');
+    expect(sources).not.toContain('SYNCED');
 
     // 5. Create a cross-platform content draft
     const draftRes = await admin.post('/api/v1/content/drafts', {
@@ -62,12 +60,12 @@ describe('Phase 5 E2E Flow — Social, Analytics & Dashboard Summary', () => {
     expect(draftRes.body.title).toBe('Summer Gear Review Teaser');
     const draftId = draftRes.body.id;
 
-    // 6. Publish the content draft (reports status per platform)
-    // Note: YOUTUBE account is connected, INSTAGRAM account is not connected yet -> partial failure reported
+    // 6. Publishing is not available without a platform integration; the draft must stay untouched
     const publishRes = await admin.post(`/api/v1/content/drafts/${draftId}/publish`, {});
-    expect(publishRes.status).toBe(200);
-    expect(publishRes.body.resultsPerPlatform.YOUTUBE.success).toBe(true);
-    expect(publishRes.body.resultsPerPlatform.INSTAGRAM.success).toBe(false);
+    expect(publishRes.status).toBe(503);
+    expect(publishRes.body.code).toBe('CAPABILITY_DISABLED');
+    const after = await t.c.db.contentDraft.findUniqueOrThrow({ where: { id: draftId } });
+    expect([after.status, after.publishedAt]).toEqual(['DRAFT', null]);
 
     // 7. Retrieve aggregated dashboard summary metrics
     const dashRes = await admin.get('/api/v1/dashboard/summary');

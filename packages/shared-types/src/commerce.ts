@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { pageOf, paginationQuerySchema } from './common.js';
+import { emailSchema, plainText } from './common.js';
 
 export const customerStatusSchema = z.enum(['LEAD', 'ACTIVE', 'INACTIVE', 'BLOCKED']);
 export type CustomerStatus = z.infer<typeof customerStatusSchema>;
@@ -275,26 +275,23 @@ export type Order = z.infer<typeof orderSchema>;
 
 export const checkoutItemInputSchema = z.object({
   variantId: z.string().min(1).max(100),
-  quantity: z.number().int().positive().max(1000),
+  quantity: z.number().int().min(1).max(100),
 });
 
-export const shippingAddressSchema = z.object({
-  street: z.string().min(1).max(200),
-  city: z.string().min(1).max(100),
-  state: z.string().max(100).optional(),
-  postalCode: z.string().max(30).optional(),
-  country: z.string().min(2).max(100),
-}).passthrough();
+/** Free-form address, but bounded: at most 12 short plain-text fields, so an anonymous caller cannot store large blobs. */
+export const shippingAddressInputSchema = z
+  .record(z.string().min(1).max(50), plainText(0, 300))
+  .refine((a) => Object.keys(a).length > 0 && Object.keys(a).length <= 12, 'Provide between 1 and 12 address fields');
 
 export const checkoutBodySchema = z.object({
-  customerEmail: z.string().email().max(254),
-  customerName: z.string().min(1).max(100),
-  customerPhone: z.string().max(50).optional(),
-  shippingAddress: shippingAddressSchema,
-  items: z.array(checkoutItemInputSchema).min(1).max(100),
-  promoCode: z.string().max(50).optional(),
+  customerEmail: emailSchema,
+  customerName: plainText(1, 120),
+  customerPhone: plainText(3, 30).optional(),
+  shippingAddress: shippingAddressInputSchema,
+  items: z.array(checkoutItemInputSchema).min(1).max(50),
+  promoCode: plainText(1, 50).optional(),
   paymentMethod: paymentMethodSchema.default('CASH_ON_DELIVERY'),
-  idempotencyKey: z.string().max(100).optional(),
+  idempotencyKey: z.string().trim().min(8).max(100).optional(),
 });
 export type CheckoutBody = z.infer<typeof checkoutBodySchema>;
 
@@ -305,36 +302,36 @@ export const updateOrderStatusBodySchema = z.object({
 export type UpdateOrderStatusBody = z.infer<typeof updateOrderStatusBodySchema>;
 
 export const recordOrderPaymentBodySchema = z.object({
-  amountCents: z.number().int().positive(),
+  amountCents: z.number().int().positive().max(1_000_000_000),
   paymentMethod: paymentMethodSchema,
-  reference: z.string().optional(),
-  notes: z.string().optional(),
+  reference: plainText(1, 100).optional(),
+  notes: plainText(1, 1000).optional(),
 });
 export type RecordOrderPaymentBody = z.infer<typeof recordOrderPaymentBodySchema>;
 
 export const refundOrderBodySchema = z.object({
-  amountCents: z.number().int().positive(),
-  reason: z.string().min(1),
+  amountCents: z.number().int().positive().max(1_000_000_000),
+  reason: plainText(1, 1000),
 });
 export type RefundOrderBody = z.infer<typeof refundOrderBodySchema>;
 
 export const createShipmentBodySchema = z.object({
-  carrier: z.string().min(1),
-  trackingNumber: z.string().optional(),
-  notes: z.string().optional(),
+  carrier: plainText(1, 100),
+  trackingNumber: plainText(1, 100).optional(),
+  notes: plainText(1, 1000).optional(),
   shippedAt: z.string().datetime().optional(),
 });
 export type CreateShipmentBody = z.infer<typeof createShipmentBodySchema>;
 
 export const createReturnRequestBodySchema = z.object({
-  reason: z.string().min(1),
+  reason: plainText(1, 1000),
   restockResellable: z.boolean().default(true),
 });
 export type CreateReturnRequestBody = z.infer<typeof createReturnRequestBodySchema>;
 
 export const decideReturnRequestBodySchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED', 'RECEIVED', 'RESTOCKED']),
-  decisionNotes: z.string().optional(),
+  decisionNotes: plainText(1, 1000).optional(),
 });
 export type DecideReturnRequestBody = z.infer<typeof decideReturnRequestBodySchema>;
 
@@ -452,48 +449,4 @@ export const earningsSummarySchema = z.object({
   categories: z.record(z.string(), z.number().int()),
 });
 export type EarningsSummary = z.infer<typeof earningsSummarySchema>;
-
-// ─────────────────────────────────────────────────────────────
-// PAGINATED SCHEMAS & LIST QUERIES
-// ─────────────────────────────────────────────────────────────
-
-export const productListQuerySchema = paginationQuerySchema.extend({
-  categoryId: z.string().optional(),
-  search: z.string().optional(),
-});
-export type ProductListQuery = z.infer<typeof productListQuerySchema>;
-export const productPageSchema = pageOf(productSchema, 'ProductPage');
-export type ProductPage = z.infer<typeof productPageSchema>;
-
-export const customerListQuerySchema = paginationQuerySchema.extend({
-  status: customerStatusSchema.optional(),
-  search: z.string().optional(),
-});
-export type CustomerListQuery = z.infer<typeof customerListQuerySchema>;
-export const customerPageSchema = pageOf(customerSchema, 'CustomerPage');
-export type CustomerPage = z.infer<typeof customerPageSchema>;
-
-export const orderListQuerySchema = paginationQuerySchema.extend({
-  status: orderStatusSchema.optional(),
-  customerId: z.string().optional(),
-});
-export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
-export const orderPageSchema = pageOf(orderSchema, 'OrderPage');
-export type OrderPage = z.infer<typeof orderPageSchema>;
-
-export const invoiceListQuerySchema = paginationQuerySchema.extend({
-  status: z.enum(['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']).optional(),
-  campaignId: z.string().optional(),
-});
-export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
-export const invoicePageSchema = pageOf(invoiceSchema, 'InvoicePage');
-export type InvoicePage = z.infer<typeof invoicePageSchema>;
-
-export const earningEntryListQuerySchema = paginationQuerySchema.extend({
-  category: z.string().optional(),
-  campaignId: z.string().optional(),
-});
-export type EarningEntryListQuery = z.infer<typeof earningEntryListQuerySchema>;
-export const earningEntryPageSchema = pageOf(earningEntrySchema, 'EarningEntryPage');
-export type EarningEntryPage = z.infer<typeof earningEntryPageSchema>;
 

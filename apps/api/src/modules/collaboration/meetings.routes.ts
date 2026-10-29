@@ -68,7 +68,7 @@ export function meetingsRoutes(kit: RouteKit): Router {
       tags: ['Public', 'Meetings'],
       summary: 'Book a meeting slot with automated conflict detection',
       access: { type: 'public', reason: 'Public booking submission' },
-      rateLimit: 'public-form',
+      rateLimit: 'public',
       csrf: false,
       body: scheduleMeetingSchema,
       response: { status: 201, schema: meetingSchema },

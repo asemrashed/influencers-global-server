@@ -6,7 +6,7 @@ import type { Logger } from '../lib/logger.js';
 import { createSmtpEmail } from './email-smtp.js';
 import { createCloudinaryStorage } from './storage-cloudinary.js';
 import { createS3Storage } from './storage-s3.js';
-import { SAFE_KEY, type EmailProvider, type StorageProvider } from './types.js';
+import { SAFE_KEY, type AiProvider, type EmailProvider, type StorageProvider } from './types.js';
 
 export * from './types.js';
 
@@ -18,7 +18,7 @@ export * from './types.js';
 export interface Providers {
   email: EmailProvider | null;
   storage: StorageProvider | null;
-  ai: null;
+  ai: AiProvider | null;
   payment: null;
 }
 

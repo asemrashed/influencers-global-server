@@ -134,6 +134,8 @@ export const apiEnvSchema = z
     RATE_LIMIT_ENABLED: bool(true),
     RATE_LIMIT_GLOBAL_PER_MIN: int(300, 1),
     RATE_LIMIT_AUTH_PER_MIN: int(10, 1),
+    /** Per-IP limit for anonymous write endpoints (checkout, inquiries, bookings, RSVPs). */
+    RATE_LIMIT_PUBLIC_PER_MIN: int(20, 1),
 
     // Optional capabilities: blank = OFF, enforced server-side
     JOBS_ENABLED: bool(true),

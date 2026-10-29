@@ -3,23 +3,17 @@ import { z } from 'zod';
 import type { Prisma } from '../../generated/prisma/client.js';
 import {
   customerSchema,
-  customerListQuerySchema,
-  customerPageSchema,
   createCustomerBodySchema,
   updateCustomerBodySchema,
   productCategorySchema,
   createProductCategoryBodySchema,
   productSchema,
-  productListQuerySchema,
-  productPageSchema,
   createProductBodySchema,
   updateProductBodySchema,
   stockAdjustmentBodySchema,
   promoCodeSchema,
   createPromoCodeBodySchema,
   orderSchema,
-  orderListQuerySchema,
-  orderPageSchema,
   checkoutBodySchema,
   updateOrderStatusBodySchema,
   recordOrderPaymentBodySchema,
@@ -28,19 +22,19 @@ import {
   createReturnRequestBodySchema,
   decideReturnRequestBodySchema,
   invoiceSchema,
-  invoiceListQuerySchema,
-  invoicePageSchema,
   createInvoiceBodySchema,
   recordInvoicePaymentBodySchema,
   earningEntrySchema,
-  earningEntryListQuerySchema,
-  earningEntryPageSchema,
   createEarningEntryBodySchema,
   earningsSummarySchema,
+  pageOf,
+  paginationQuerySchema,
 } from '@platform/shared-types';
 import { errors } from '../../lib/errors.js';
 import { pageArgs, toPage } from '../../lib/pagination.js';
 import { routeFactory, type RouteKit } from '../../lib/route.js';
+import { fireWorkflowsSafely } from '../ai/workflows.service.js';
+import { assertOrderInScope, newOrderNumber, orderDto, orderInclude } from './order-helpers.js';
 
 export function commerceRoutes(kit: RouteKit): Router {
   const router = Router();
@@ -80,9 +74,12 @@ export function commerceRoutes(kit: RouteKit): Router {
       operationId: 'listStoreProducts',
       tags: ['Storefront'],
       summary: 'List storefront products',
-      access: { type: 'public', reason: 'Public storefront product catalog' },
-      query: productListQuerySchema,
-      response: { status: 200, schema: productPageSchema },
+      access: { type: 'public', reason: 'Public storefront category catalog' },
+      query: paginationQuerySchema.extend({
+        categoryId: z.string().max(100).optional(),
+        search: z.string().trim().max(100).optional(),
+      }),
+      response: { status: 200, schema: pageOf(productSchema, 'StoreProductPage') },
     },
     async ({ query }) => {
       const where: Prisma.ProductWhereInput = { isActive: true };
@@ -98,8 +95,8 @@ export function commerceRoutes(kit: RouteKit): Router {
         include: {
           variants: { where: { isActive: true } },
         },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         ...pageArgs(query),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
 
       return toPage(products, query.limit, (p) => ({
@@ -122,183 +119,121 @@ export function commerceRoutes(kit: RouteKit): Router {
       operationId: 'storeCheckout',
       tags: ['Storefront'],
       summary: 'Storefront checkout / order creation',
-      access: { type: 'public', reason: 'Public customer shopping cart checkout' },
-      rateLimit: 'public-form',
+      description:
+        'Offline payment methods only. Send an `idempotencyKey` to make retries safe: the same key returns the original order. ' +
+        'Stock and promo-code usage are claimed atomically, so concurrent buyers can never oversell.',
+      access: { type: 'public', reason: 'Anonymous storefront checkout; rate limited per IP, offline payment only' },
+      rateLimit: 'public',
       body: checkoutBodySchema,
       response: { status: 201, schema: orderSchema },
+      errors: ['CONFLICT', 'NOT_FOUND'],
     },
     async ({ body }) => {
-      if (body.paymentMethod !== 'CASH_ON_DELIVERY' && body.paymentMethod !== 'MANUAL_BANK_TRANSFER' && body.paymentMethod !== 'OTHER_OFFLINE') {
-        throw errors.validation([{ path: 'paymentMethod', message: 'Online payment provider is not configured. Offline payment required.' }]);
+      const replay = async () =>
+        body.idempotencyKey
+          ? db.order.findUnique({ where: { idempotencyKey: body.idempotencyKey }, include: orderInclude })
+          : null;
+
+      const existing = await replay();
+      if (existing) {
+        // Same key with a different cart is a client bug, not a replay: refuse instead of silently returning the old order.
+        if (existing.customerEmail !== body.customerEmail) throw errors.conflict('This idempotency key was used for a different order');
+        return orderDto(existing);
       }
 
-      if (body.idempotencyKey) {
-        const existing = await db.order.findUnique({
-          where: { idempotencyKey: body.idempotencyKey },
-          include: { items: true, shipments: true, returns: true },
-        });
-        if (existing) {
-          return {
-            ...existing,
-            shippingAddress: existing.shippingAddress as Record<string, unknown>,
-            paymentDetails: existing.paymentDetails as Record<string, unknown> | null,
-            createdAt: existing.createdAt.toISOString(),
-            updatedAt: existing.updatedAt.toISOString(),
-            items: existing.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-            shipments: existing.shipments.map((s) => ({
-              ...s,
-              shippedAt: s.shippedAt?.toISOString() ?? null,
-              deliveredAt: s.deliveredAt?.toISOString() ?? null,
-              createdAt: s.createdAt.toISOString(),
-              updatedAt: s.updatedAt.toISOString(),
-            })),
-            returns: existing.returns.map((ret) => ({
-              ...ret,
-              decidedAt: ret.decidedAt?.toISOString() ?? null,
-              createdAt: ret.createdAt.toISOString(),
-              updatedAt: ret.updatedAt.toISOString(),
-            })),
-          };
-        }
-      }
+      // Merge repeated variants, then lock rows in a stable order so concurrent carts cannot deadlock.
+      const wanted = new Map<string, number>();
+      for (const it of body.items) wanted.set(it.variantId, (wanted.get(it.variantId) ?? 0) + it.quantity);
+      const lines = [...wanted.entries()].sort(([x], [y]) => (x < y ? -1 : 1));
 
-      return await db.$transaction(async (tx) => {
-        let promoCodeRow = null;
-        let discountCents = 0;
-        if (body.promoCode) {
-          promoCodeRow = await tx.promoCode.findUnique({ where: { code: body.promoCode.toUpperCase() } });
-          if (!promoCodeRow || !promoCodeRow.isActive) {
-            throw errors.validation([{ path: 'promoCode', message: 'Promo code is invalid or inactive' }]);
-          }
-          if (promoCodeRow.expiresAt && promoCodeRow.expiresAt < new Date()) {
-            throw errors.validation([{ path: 'promoCode', message: 'Promo code has expired' }]);
-          }
-          if (promoCodeRow.maxUses) {
-            // Atomic conditional update to guard promo code max uses against race conditions
-            const updatedPromo = await tx.$executeRaw`
-              UPDATE "PromoCode"
-              SET "usedCount" = "usedCount" + 1
-              WHERE "id" = ${promoCodeRow.id} AND "usedCount" < ${promoCodeRow.maxUses}
-            `;
-            if (updatedPromo === 0) {
-              throw errors.validation([{ path: 'promoCode', message: 'Promo code has reached max uses' }]);
-            }
-          } else {
-            await tx.promoCode.update({
-              where: { id: promoCodeRow.id },
-              data: { usedCount: { increment: 1 } },
+      try {
+        const created = await db.$transaction(async (tx) => {
+          const customerRow = await tx.customer.findUnique({ where: { email: body.customerEmail } });
+          if (customerRow?.status === 'BLOCKED') throw errors.forbidden('This customer cannot place orders');
+
+          let subtotalCents = 0;
+          const itemsToCreate = [];
+          for (const [variantId, quantity] of lines) {
+            // One conditional UPDATE is the whole check: it only succeeds while enough stock remains.
+            const claimed = await tx.productVariant.updateMany({
+              where: { id: variantId, isActive: true, stock: { gte: quantity } },
+              data: { stock: { decrement: quantity } },
             });
-          }
-        }
-
-        let subtotalCents = 0;
-        const itemsToCreate = [];
-
-        for (const item of body.items) {
-          const variant = await tx.productVariant.findUnique({ where: { id: item.variantId } });
-          if (!variant || !variant.isActive) {
-            throw errors.notFound(`Variant ${item.variantId}`);
-          }
-
-          // Atomic conditional stock decrement: prevents overselling under race conditions
-          const rowsUpdated = await tx.$executeRaw`
-            UPDATE "ProductVariant"
-            SET "stock" = "stock" - ${item.quantity}
-            WHERE "id" = ${variant.id} AND "stock" >= ${item.quantity}
-          `;
-          if (rowsUpdated === 0) {
-            throw errors.conflict(`Variant ${variant.sku} has insufficient stock`);
+            if (claimed.count === 0) {
+              const variant = await tx.productVariant.findUnique({ where: { id: variantId } });
+              if (!variant || !variant.isActive) throw errors.notFound('Product variant');
+              throw errors.conflict(`${variant.sku} has insufficient stock (available: ${variant.stock})`);
+            }
+            const variant = await tx.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+            await tx.inventoryMovement.create({
+              data: { variantId, quantity: -quantity, action: 'STOCK_OUT', reason: 'Order checkout' },
+            });
+            const totalPriceCents = variant.priceCents * quantity;
+            subtotalCents += totalPriceCents;
+            itemsToCreate.push({ variantId, title: variant.title, sku: variant.sku, quantity, unitPriceCents: variant.priceCents, totalPriceCents });
           }
 
-          await tx.inventoryMovement.create({
+          let promoCodeId: string | undefined;
+          let discountCents = 0;
+          if (body.promoCode) {
+            const promo = await tx.promoCode.findUnique({ where: { code: body.promoCode.toUpperCase() } });
+            if (!promo) throw errors.validation([{ path: 'promoCode', message: 'Promo code is invalid or inactive' }]);
+            // Claim one use atomically; the WHERE clause re-checks every rule, so two buyers cannot both take the last use.
+            const claimed = await tx.$executeRaw`
+              UPDATE "PromoCode" SET "usedCount" = "usedCount" + 1, "updatedAt" = NOW()
+              WHERE "id" = ${promo.id} AND "isActive" = true
+                AND ("maxUses" IS NULL OR "usedCount" < "maxUses")
+                AND ("startsAt" IS NULL OR "startsAt" <= NOW())
+                AND ("expiresAt" IS NULL OR "expiresAt" > NOW())`;
+            if (claimed === 0) throw errors.validation([{ path: 'promoCode', message: 'Promo code is invalid, expired or fully used' }]);
+            promoCodeId = promo.id;
+            discountCents = promo.discountCents
+              ? Math.min(subtotalCents, promo.discountCents)
+              : promo.discountBps
+                ? Math.min(subtotalCents, Math.round((subtotalCents * promo.discountBps) / 10_000))
+                : 0;
+          }
+
+          const customer = await tx.customer.upsert({
+            where: { email: body.customerEmail },
+            // Name and status of an existing customer are never overwritten by an anonymous request.
+            update: { ordersCount: { increment: 1 } },
+            create: { email: body.customerEmail, name: body.customerName, phone: body.customerPhone, status: 'ACTIVE', ordersCount: 1 },
+          });
+
+          const order = await tx.order.create({
             data: {
-              variantId: variant.id,
-              quantity: -item.quantity,
-              action: 'STOCK_OUT',
-              reason: 'Order checkout',
+              orderNumber: newOrderNumber(),
+              customerId: customer.id,
+              customerEmail: body.customerEmail,
+              customerName: body.customerName,
+              customerPhone: body.customerPhone,
+              shippingAddress: body.shippingAddress,
+              status: 'PENDING',
+              paymentStatus: 'UNPAID',
+              paymentMethod: body.paymentMethod,
+              promoCodeId,
+              subtotalCents,
+              discountCents,
+              totalCents: subtotalCents - discountCents,
+              idempotencyKey: body.idempotencyKey,
+              items: { create: itemsToCreate },
             },
+            include: orderInclude,
           });
-
-          const itemTotal = variant.priceCents * item.quantity;
-          subtotalCents += itemTotal;
-          itemsToCreate.push({
-            variantId: variant.id,
-            title: variant.title,
-            sku: variant.sku,
-            quantity: item.quantity,
-            unitPriceCents: variant.priceCents,
-            totalPriceCents: itemTotal,
-          });
-        }
-
-        if (promoCodeRow) {
-          if (promoCodeRow.discountCents) {
-            discountCents = Math.min(subtotalCents, promoCodeRow.discountCents);
-          } else if (promoCodeRow.discountBps) {
-            discountCents = Math.round((subtotalCents * promoCodeRow.discountBps) / 10000);
-          }
-        }
-
-        const totalCents = Math.max(0, subtotalCents - discountCents);
-        const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-
-        // Link or create customer (totalSpentCents is updated when payment is recorded, not at checkout)
-        let customer = await tx.customer.findUnique({ where: { email: body.customerEmail.toLowerCase() } });
-        if (!customer) {
-          customer = await tx.customer.create({
-            data: {
-              email: body.customerEmail.toLowerCase(),
-              name: body.customerName,
-              phone: body.customerPhone,
-              status: 'ACTIVE',
-              totalSpentCents: 0,
-              ordersCount: 1,
-            },
-          });
-        } else {
-          await tx.customer.update({
-            where: { id: customer.id },
-            data: {
-              ordersCount: { increment: 1 },
-              status: 'ACTIVE',
-            },
-          });
-        }
-
-        const order = await tx.order.create({
-          data: {
-            orderNumber,
-            customerId: customer.id,
-            customerEmail: body.customerEmail.toLowerCase(),
-            customerName: body.customerName,
-            customerPhone: body.customerPhone,
-            shippingAddress: body.shippingAddress as Prisma.InputJsonValue,
-            status: 'PENDING',
-            paymentStatus: 'UNPAID',
-            paymentMethod: body.paymentMethod,
-            promoCodeId: promoCodeRow?.id,
-            subtotalCents,
-            discountCents,
-            totalCents,
-            idempotencyKey: body.idempotencyKey,
-            items: {
-              create: itemsToCreate,
-            },
-          },
-          include: { items: true, shipments: true, returns: true },
+          return orderDto(order);
         });
-
-        return {
-          ...order,
-          shippingAddress: order.shippingAddress as Record<string, unknown>,
-          paymentDetails: order.paymentDetails as Record<string, unknown> | null,
-          createdAt: order.createdAt.toISOString(),
-          updatedAt: order.updatedAt.toISOString(),
-          items: order.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-          shipments: [],
-          returns: [],
-        };
-      });
+        // After the order is committed; a workflow problem never fails or rolls back the customer's order.
+        await fireWorkflowsSafely(kit.c, 'ORDER_CREATED', { orderId: created.id, orderNumber: created.orderNumber, totalCents: created.totalCents, customerEmail: created.customerEmail });
+        return created;
+      } catch (err) {
+        // Two identical requests raced past the replay check: the loser returns the winner's order.
+        if ((err as { code?: string })?.code === 'P2002') {
+          const winner = await replay();
+          if (winner) return orderDto(winner);
+        }
+        throw err;
+      }
     },
   );
 
@@ -314,8 +249,11 @@ export function commerceRoutes(kit: RouteKit): Router {
       tags: ['Commerce'],
       summary: 'List customers and leads',
       access: { type: 'permission', permission: 'customers.read' },
-      query: customerListQuerySchema,
-      response: { status: 200, schema: customerPageSchema },
+      query: paginationQuerySchema.extend({
+        status: z.enum(['LEAD', 'ACTIVE', 'INACTIVE', 'BLOCKED']).optional(),
+        search: z.string().trim().max(100).optional(),
+      }),
+      response: { status: 200, schema: pageOf(customerSchema, 'CustomerPage') },
     },
     async ({ query, scope, auth }) => {
       const where: Prisma.CustomerWhereInput = {};
@@ -329,11 +267,7 @@ export function commerceRoutes(kit: RouteKit): Router {
         ];
       }
 
-      const rows = await db.customer.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        ...pageArgs(query),
-      });
+      const rows = await db.customer.findMany({ where, ...pageArgs(query), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
       return toPage(rows, query.limit, (c) => ({
         ...c,
         createdAt: c.createdAt.toISOString(),
@@ -538,19 +472,17 @@ export function commerceRoutes(kit: RouteKit): Router {
     },
     async ({ params, body, auth }) => {
       return await db.$transaction(async (tx) => {
-        const variant = await tx.productVariant.findUnique({ where: { id: params.id } });
-        if (!variant) throw errors.notFound('Product variant');
-
-        const newStock = variant.stock + body.quantity;
-        if (newStock < 0) {
-          throw errors.conflict(`Adjustment would result in negative stock (${newStock})`);
-        }
-
-        await tx.productVariant.update({
-          where: { id: params.id },
-          data: { stock: newStock },
+        // Conditional update: a decrease only applies while stock stays >= 0, even under concurrent adjustments.
+        const applied = await tx.productVariant.updateMany({
+          where: { id: params.id, ...(body.quantity < 0 ? { stock: { gte: -body.quantity } } : {}) },
+          data: { stock: { increment: body.quantity } },
         });
-
+        if (applied.count === 0) {
+          const variant = await tx.productVariant.findUnique({ where: { id: params.id } });
+          if (!variant) throw errors.notFound('Product variant');
+          throw errors.conflict(`Adjustment would result in negative stock (${variant.stock + body.quantity})`);
+        }
+        const variant = await tx.productVariant.findUniqueOrThrow({ where: { id: params.id } });
         await tx.inventoryMovement.create({
           data: {
             variantId: params.id,
@@ -560,8 +492,7 @@ export function commerceRoutes(kit: RouteKit): Router {
             actorId: auth.user.id,
           },
         });
-
-        return { variantId: params.id, newStock };
+        return { variantId: params.id, newStock: variant.stock };
       });
     },
   );
@@ -617,8 +548,11 @@ export function commerceRoutes(kit: RouteKit): Router {
       tags: ['Commerce'],
       summary: 'List customer orders',
       access: { type: 'permission', permission: 'orders.read' },
-      query: orderListQuerySchema,
-      response: { status: 200, schema: orderPageSchema },
+      query: paginationQuerySchema.extend({
+        status: z.enum(['PENDING', 'PAID', 'FULFILLED', 'DELIVERED', 'CANCELLED', 'REFUNDED']).optional(),
+        customerId: z.string().max(100).optional(),
+      }),
+      response: { status: 200, schema: pageOf(orderSchema, 'OrderPage') },
     },
     async ({ query, scope, auth }) => {
       const where: Prisma.OrderWhereInput = {};
@@ -626,34 +560,8 @@ export function commerceRoutes(kit: RouteKit): Router {
       if (query.status) where.status = query.status;
       if (query.customerId) where.customerId = query.customerId;
 
-      const orders = await db.order.findMany({
-        where,
-        include: { items: true, shipments: true, returns: true },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        ...pageArgs(query),
-      });
-
-      return toPage(orders, query.limit, (o) => ({
-        ...o,
-        shippingAddress: o.shippingAddress as Record<string, unknown>,
-        paymentDetails: o.paymentDetails as Record<string, unknown> | null,
-        createdAt: o.createdAt.toISOString(),
-        updatedAt: o.updatedAt.toISOString(),
-        items: o.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-        shipments: o.shipments.map((s) => ({
-          ...s,
-          shippedAt: s.shippedAt?.toISOString() ?? null,
-          deliveredAt: s.deliveredAt?.toISOString() ?? null,
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-        })),
-        returns: o.returns.map((ret) => ({
-          ...ret,
-          decidedAt: ret.decidedAt?.toISOString() ?? null,
-          createdAt: ret.createdAt.toISOString(),
-          updatedAt: ret.updatedAt.toISOString(),
-        })),
-      }));
+      const orders = await db.order.findMany({ where, include: orderInclude, ...pageArgs(query), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+      return toPage(orders, query.limit, orderDto);
     },
   );
 
@@ -669,36 +577,10 @@ export function commerceRoutes(kit: RouteKit): Router {
       response: { status: 200, schema: orderSchema },
     },
     async ({ params, scope, auth }) => {
-      const order = await db.order.findUnique({
-        where: { id: params.id },
-        include: { items: true, shipments: true, returns: true },
-      });
+      const order = await db.order.findUnique({ where: { id: params.id }, include: orderInclude });
       if (!order) throw errors.notFound('Order');
-      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
-        throw errors.forbidden('Cannot access order assigned to another user');
-      }
-
-      return {
-        ...order,
-        shippingAddress: order.shippingAddress as Record<string, unknown>,
-        paymentDetails: order.paymentDetails as Record<string, unknown> | null,
-        createdAt: order.createdAt.toISOString(),
-        updatedAt: order.updatedAt.toISOString(),
-        items: order.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-        shipments: order.shipments.map((s) => ({
-          ...s,
-          shippedAt: s.shippedAt?.toISOString() ?? null,
-          deliveredAt: s.deliveredAt?.toISOString() ?? null,
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-        })),
-        returns: order.returns.map((ret) => ({
-          ...ret,
-          decidedAt: ret.decidedAt?.toISOString() ?? null,
-          createdAt: ret.createdAt.toISOString(),
-          updatedAt: ret.updatedAt.toISOString(),
-        })),
-      };
+      assertOrderInScope(scope, order, auth.user.id);
+      return orderDto(order);
     },
   );
 
@@ -716,14 +598,9 @@ export function commerceRoutes(kit: RouteKit): Router {
     },
     async ({ params, body, scope, auth }) => {
       return await db.$transaction(async (tx) => {
-        const order = await tx.order.findUnique({
-          where: { id: params.id },
-          include: { items: true, shipments: true, returns: true },
-        });
+        const order = await tx.order.findUnique({ where: { id: params.id }, include: { items: true } });
         if (!order) throw errors.notFound('Order');
-        if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
-          throw errors.forbidden('Cannot transition order assigned to another user');
-        }
+        assertOrderInScope(scope, order, auth.user.id);
 
         const validTransitions: Record<string, string[]> = {
           PENDING: ['PAID', 'CANCELLED'],
@@ -733,58 +610,27 @@ export function commerceRoutes(kit: RouteKit): Router {
           CANCELLED: [],
           REFUNDED: [],
         };
-
-        const allowed = validTransitions[order.status] ?? [];
-        if (!allowed.includes(body.status)) {
+        if (!(validTransitions[order.status] ?? []).includes(body.status)) {
           throw errors.conflict(`Cannot transition order from ${order.status} to ${body.status}`);
         }
 
+        // Compare-and-set on the current status: of two concurrent "cancel" requests only one wins,
+        // so stock is released exactly once.
+        const claimed = await tx.order.updateMany({ where: { id: order.id, status: order.status }, data: { status: body.status } });
+        if (claimed.count === 0) throw errors.conflict('The order was changed by someone else; reload and retry');
+
         if (body.status === 'CANCELLED') {
           for (const item of order.items) {
-            await tx.productVariant.update({
-              where: { id: item.variantId },
-              data: { stock: { increment: item.quantity } },
-            });
+            await tx.productVariant.update({ where: { id: item.variantId }, data: { stock: { increment: item.quantity } } });
             await tx.inventoryMovement.create({
-              data: {
-                variantId: item.variantId,
-                quantity: item.quantity,
-                action: 'RELEASE',
-                referenceId: order.id,
-                reason: 'Order cancelled',
-                actorId: auth.user.id,
-              },
+              data: { variantId: item.variantId, quantity: item.quantity, action: 'RELEASE', referenceId: order.id, reason: 'Order cancelled', actorId: auth.user.id },
             });
           }
+          if (order.promoCodeId) {
+            await tx.$executeRaw`UPDATE "PromoCode" SET "usedCount" = GREATEST("usedCount" - 1, 0) WHERE "id" = ${order.promoCodeId}`;
+          }
         }
-
-        const updated = await tx.order.update({
-          where: { id: params.id },
-          data: { status: body.status },
-          include: { items: true, shipments: true, returns: true },
-        });
-
-        return {
-          ...updated,
-          shippingAddress: updated.shippingAddress as Record<string, unknown>,
-          paymentDetails: updated.paymentDetails as Record<string, unknown> | null,
-          createdAt: updated.createdAt.toISOString(),
-          updatedAt: updated.updatedAt.toISOString(),
-          items: updated.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-          shipments: updated.shipments.map((s) => ({
-            ...s,
-            shippedAt: s.shippedAt?.toISOString() ?? null,
-            deliveredAt: s.deliveredAt?.toISOString() ?? null,
-            createdAt: s.createdAt.toISOString(),
-            updatedAt: s.updatedAt.toISOString(),
-          })),
-          returns: updated.returns.map((ret) => ({
-            ...ret,
-            decidedAt: ret.decidedAt?.toISOString() ?? null,
-            createdAt: ret.createdAt.toISOString(),
-            updatedAt: ret.updatedAt.toISOString(),
-          })),
-        };
+        return orderDto(await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude }));
       });
     },
   );
@@ -800,65 +646,39 @@ export function commerceRoutes(kit: RouteKit): Router {
       params: z.object({ id: z.string() }),
       body: recordOrderPaymentBodySchema,
       response: { status: 200, schema: orderSchema },
+      errors: ['CONFLICT', 'NOT_FOUND'],
     },
     async ({ params, body, scope, auth }) => {
-      const order = await db.order.findUnique({
-        where: { id: params.id },
-        include: { items: true, shipments: true, returns: true },
-      });
-      if (!order) throw errors.notFound('Order');
-      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
-        throw errors.forbidden('Cannot manage payment for order assigned to another user');
-      }
+      return await db.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({ where: { id: params.id } });
+        if (!order) throw errors.notFound('Order');
+        assertOrderInScope(scope, order, auth.user.id);
+        if (order.status === 'CANCELLED' || order.status === 'REFUNDED') throw errors.conflict(`Cannot record a payment on a ${order.status.toLowerCase()} order`);
 
-      const newPaidCents = order.paidCents + body.amountCents;
-      const isFullyPaid = newPaidCents >= order.totalCents;
-
-      // Update customer totalSpentCents when order is paid
-      if (order.customerId) {
-        await db.customer.update({
-          where: { id: order.customerId },
-          data: { totalSpentCents: { increment: body.amountCents } },
-        });
-      }
-
-      const updated = await db.order.update({
-        where: { id: params.id },
-        data: {
-          paidCents: newPaidCents,
-          paymentStatus: isFullyPaid ? 'PAID' : order.paymentStatus,
-          status: isFullyPaid && order.status === 'PENDING' ? 'PAID' : order.status,
-          paymentMethod: body.paymentMethod,
-          paymentDetails: {
-            reference: body.reference,
-            notes: body.notes,
-            recordedAt: new Date().toISOString(),
+        // One guarded UPDATE adds the payment only while the order still has that much left to pay, so
+        // simultaneous payments can never add up to more than the total (the row is locked until commit).
+        const applied = await tx.$executeRaw`
+          UPDATE "Order" SET "paidCents" = "paidCents" + ${body.amountCents}, "updatedAt" = NOW()
+          WHERE "id" = ${order.id} AND "status" NOT IN ('CANCELLED', 'REFUNDED') AND "paidCents" + ${body.amountCents} <= "totalCents"`;
+        if (applied === 0) {
+          const fresh = await tx.order.findUniqueOrThrow({ where: { id: order.id } });
+          throw errors.conflict(`Payment exceeds the amount due (due: ${fresh.totalCents - fresh.paidCents})`);
+        }
+        const after = await tx.order.findUniqueOrThrow({ where: { id: order.id } });
+        const fullyPaid = after.paidCents >= after.totalCents;
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            ...(fullyPaid ? { paymentStatus: 'PAID' as const } : {}),
+            ...(fullyPaid && after.status === 'PENDING' ? { status: 'PAID' as const } : {}),
+            paymentMethod: body.paymentMethod,
+            paymentDetails: { reference: body.reference ?? null, notes: body.notes ?? null, recordedAt: new Date().toISOString(), recordedBy: auth.user.id },
           },
-        },
-        include: { items: true, shipments: true, returns: true },
+        });
+        // Customer lifetime value counts money actually received, not orders placed.
+        if (order.customerId) await tx.customer.update({ where: { id: order.customerId }, data: { totalSpentCents: { increment: body.amountCents } } });
+        return orderDto(await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude }));
       });
-
-      return {
-        ...updated,
-        shippingAddress: updated.shippingAddress as Record<string, unknown>,
-        paymentDetails: updated.paymentDetails as Record<string, unknown> | null,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-        items: updated.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-        shipments: updated.shipments.map((s) => ({
-          ...s,
-          shippedAt: s.shippedAt?.toISOString() ?? null,
-          deliveredAt: s.deliveredAt?.toISOString() ?? null,
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-        })),
-        returns: updated.returns.map((ret) => ({
-          ...ret,
-          decidedAt: ret.decidedAt?.toISOString() ?? null,
-          createdAt: ret.createdAt.toISOString(),
-          updatedAt: ret.updatedAt.toISOString(),
-        })),
-      };
     },
   );
 
@@ -873,55 +693,30 @@ export function commerceRoutes(kit: RouteKit): Router {
       params: z.object({ id: z.string() }),
       body: refundOrderBodySchema,
       response: { status: 200, schema: orderSchema },
+      errors: ['CONFLICT', 'NOT_FOUND'],
     },
     async ({ params, body, scope, auth }) => {
-      const order = await db.order.findUnique({
-        where: { id: params.id },
-        include: { items: true, shipments: true, returns: true },
+      return await db.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({ where: { id: params.id } });
+        if (!order) throw errors.notFound('Order');
+        assertOrderInScope(scope, order, auth.user.id);
+
+        const applied = await tx.$executeRaw`
+          UPDATE "Order" SET "refundedCents" = "refundedCents" + ${body.amountCents}, "updatedAt" = NOW()
+          WHERE "id" = ${order.id} AND "refundedCents" + ${body.amountCents} <= "paidCents"`;
+        if (applied === 0) {
+          const fresh = await tx.order.findUniqueOrThrow({ where: { id: order.id } });
+          throw errors.conflict(`Refund amount exceeds paid amount (paid: ${fresh.paidCents}, already refunded: ${fresh.refundedCents})`);
+        }
+        const after = await tx.order.findUniqueOrThrow({ where: { id: order.id } });
+        const isFullRefund = after.refundedCents >= after.paidCents;
+        await tx.order.update({
+          where: { id: order.id },
+          data: { paymentStatus: isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED', ...(isFullRefund ? { status: 'REFUNDED' as const } : {}) },
+        });
+        if (order.customerId) await tx.customer.update({ where: { id: order.customerId }, data: { totalSpentCents: { decrement: body.amountCents } } });
+        return orderDto(await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude }));
       });
-      if (!order) throw errors.notFound('Order');
-      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
-        throw errors.forbidden('Cannot refund order assigned to another user');
-      }
-
-      if (body.amountCents + order.refundedCents > order.paidCents) {
-        throw errors.conflict(`Refund amount exceeds paid amount (paid: ${order.paidCents}, already refunded: ${order.refundedCents})`);
-      }
-
-      const totalRefunded = order.refundedCents + body.amountCents;
-      const isFullRefund = totalRefunded >= order.paidCents;
-
-      const updated = await db.order.update({
-        where: { id: params.id },
-        data: {
-          refundedCents: totalRefunded,
-          paymentStatus: isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
-          status: isFullRefund ? 'REFUNDED' : order.status,
-        },
-        include: { items: true, shipments: true, returns: true },
-      });
-
-      return {
-        ...updated,
-        shippingAddress: updated.shippingAddress as Record<string, unknown>,
-        paymentDetails: updated.paymentDetails as Record<string, unknown> | null,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-        items: updated.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-        shipments: updated.shipments.map((s) => ({
-          ...s,
-          shippedAt: s.shippedAt?.toISOString() ?? null,
-          deliveredAt: s.deliveredAt?.toISOString() ?? null,
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-        })),
-        returns: updated.returns.map((ret) => ({
-          ...ret,
-          decidedAt: ret.decidedAt?.toISOString() ?? null,
-          createdAt: ret.createdAt.toISOString(),
-          updatedAt: ret.updatedAt.toISOString(),
-        })),
-      };
     },
   );
 
@@ -936,52 +731,30 @@ export function commerceRoutes(kit: RouteKit): Router {
       params: z.object({ id: z.string() }),
       body: createShipmentBodySchema,
       response: { status: 200, schema: orderSchema },
+      errors: ['CONFLICT', 'NOT_FOUND'],
     },
     async ({ params, body, scope, auth }) => {
-      const order = await db.order.findUnique({ where: { id: params.id } });
-      if (!order) throw errors.notFound('Order');
-      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
-        throw errors.forbidden('Cannot create shipment for order assigned to another user');
-      }
-
-      await db.shipment.create({
-        data: {
-          orderId: params.id,
-          carrier: body.carrier,
-          trackingNumber: body.trackingNumber,
-          notes: body.notes,
-          status: 'SHIPPED',
-          shippedAt: body.shippedAt ? new Date(body.shippedAt) : new Date(),
-        },
+      return await db.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({ where: { id: params.id } });
+        if (!order) throw errors.notFound('Order');
+        assertOrderInScope(scope, order, auth.user.id);
+        if (order.status === 'CANCELLED' || order.status === 'REFUNDED' || order.status === 'DELIVERED') {
+          throw errors.conflict(`Cannot ship a ${order.status.toLowerCase()} order`);
+        }
+        await tx.shipment.create({
+          data: {
+            orderId: order.id,
+            carrier: body.carrier,
+            trackingNumber: body.trackingNumber,
+            notes: body.notes,
+            status: 'SHIPPED',
+            shippedAt: body.shippedAt ? new Date(body.shippedAt) : new Date(),
+          },
+        });
+        // Only a paid order moves to FULFILLED; cash-on-delivery orders stay PENDING until the money is recorded.
+        if (order.status === 'PAID') await tx.order.update({ where: { id: order.id }, data: { status: 'FULFILLED' } });
+        return orderDto(await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude }));
       });
-
-      const updated = await db.order.update({
-        where: { id: params.id },
-        data: { status: 'FULFILLED' },
-        include: { items: true, shipments: true, returns: true },
-      });
-
-      return {
-        ...updated,
-        shippingAddress: updated.shippingAddress as Record<string, unknown>,
-        paymentDetails: updated.paymentDetails as Record<string, unknown> | null,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-        items: updated.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-        shipments: updated.shipments.map((s) => ({
-          ...s,
-          shippedAt: s.shippedAt?.toISOString() ?? null,
-          deliveredAt: s.deliveredAt?.toISOString() ?? null,
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-        })),
-        returns: updated.returns.map((ret) => ({
-          ...ret,
-          decidedAt: ret.decidedAt?.toISOString() ?? null,
-          createdAt: ret.createdAt.toISOString(),
-          updatedAt: ret.updatedAt.toISOString(),
-        })),
-      };
     },
   );
 
@@ -996,49 +769,17 @@ export function commerceRoutes(kit: RouteKit): Router {
       params: z.object({ id: z.string() }),
       body: createReturnRequestBodySchema,
       response: { status: 200, schema: orderSchema },
+      errors: ['CONFLICT', 'NOT_FOUND'],
     },
     async ({ params, body, scope, auth }) => {
       const order = await db.order.findUnique({ where: { id: params.id } });
       if (!order) throw errors.notFound('Order');
-      if (scope === 'assigned' && order.assignedUserId !== auth.user.id) {
-        throw errors.forbidden('Cannot request return for order assigned to another user');
+      assertOrderInScope(scope, order, auth.user.id);
+      if (order.status === 'PENDING' || order.status === 'PAID' || order.status === 'CANCELLED') {
+        throw errors.conflict('Only shipped orders can be returned');
       }
-
-      await db.returnRequest.create({
-        data: {
-          orderId: params.id,
-          reason: body.reason,
-          restockResellable: body.restockResellable,
-          status: 'REQUESTED',
-        },
-      });
-
-      const updated = await db.order.findUniqueOrThrow({
-        where: { id: params.id },
-        include: { items: true, shipments: true, returns: true },
-      });
-
-      return {
-        ...updated,
-        shippingAddress: updated.shippingAddress as Record<string, unknown>,
-        paymentDetails: updated.paymentDetails as Record<string, unknown> | null,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-        items: updated.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-        shipments: updated.shipments.map((s) => ({
-          ...s,
-          shippedAt: s.shippedAt?.toISOString() ?? null,
-          deliveredAt: s.deliveredAt?.toISOString() ?? null,
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-        })),
-        returns: updated.returns.map((ret) => ({
-          ...ret,
-          decidedAt: ret.decidedAt?.toISOString() ?? null,
-          createdAt: ret.createdAt.toISOString(),
-          updatedAt: ret.updatedAt.toISOString(),
-        })),
-      };
+      await db.returnRequest.create({ data: { orderId: order.id, reason: body.reason, restockResellable: body.restockResellable, status: 'REQUESTED' } });
+      return orderDto(await db.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude }));
     },
   );
 
@@ -1053,77 +794,33 @@ export function commerceRoutes(kit: RouteKit): Router {
       params: z.object({ id: z.string(), returnId: z.string() }),
       body: decideReturnRequestBodySchema,
       response: { status: 200, schema: orderSchema },
+      errors: ['CONFLICT', 'NOT_FOUND'],
     },
     async ({ params, body, scope, auth }) => {
       return await db.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({ where: { id: params.id }, include: { items: true } });
+        if (!order) throw errors.notFound('Order');
+        assertOrderInScope(scope, order, auth.user.id);
         const ret = await tx.returnRequest.findUnique({ where: { id: params.returnId } });
-        if (!ret || ret.orderId !== params.id) throw errors.notFound('Return request');
+        if (!ret || ret.orderId !== order.id) throw errors.notFound('Return request');
+        if (ret.status === 'REJECTED' || ret.status === 'RESTOCKED') throw errors.conflict(`This return is already ${ret.status.toLowerCase()}`);
 
-        const orderCheck = await tx.order.findUnique({ where: { id: params.id } });
-        if (!orderCheck) throw errors.notFound('Order');
-        if (scope === 'assigned' && orderCheck.assignedUserId !== auth.user.id) {
-          throw errors.forbidden('Cannot decide return for order assigned to another user');
-        }
-
-        await tx.returnRequest.update({
-          where: { id: params.returnId },
-          data: {
-            status: body.status,
-            decisionNotes: body.decisionNotes,
-            decidedAt: new Date(),
-          },
+        // Compare-and-set on the return's status: stock can be restocked only once per return.
+        const claimed = await tx.returnRequest.updateMany({
+          where: { id: ret.id, status: ret.status },
+          data: { status: body.status, decisionNotes: body.decisionNotes, decidedAt: new Date() },
         });
+        if (claimed.count === 0) throw errors.conflict('The return was changed by someone else; reload and retry');
 
         if (body.status === 'RESTOCKED' && ret.restockResellable) {
-          const order = await tx.order.findUniqueOrThrow({
-            where: { id: params.id },
-            include: { items: true },
-          });
-
           for (const item of order.items) {
-            await tx.productVariant.update({
-              where: { id: item.variantId },
-              data: { stock: { increment: item.quantity } },
-            });
+            await tx.productVariant.update({ where: { id: item.variantId }, data: { stock: { increment: item.quantity } } });
             await tx.inventoryMovement.create({
-              data: {
-                variantId: item.variantId,
-                quantity: item.quantity,
-                action: 'RETURN_RESTOCK',
-                referenceId: order.id,
-                reason: 'Customer return approved and restocked',
-                actorId: auth.user.id,
-              },
+              data: { variantId: item.variantId, quantity: item.quantity, action: 'RETURN_RESTOCK', referenceId: order.id, reason: 'Customer return approved and restocked', actorId: auth.user.id },
             });
           }
         }
-
-        const order = await tx.order.findUniqueOrThrow({
-          where: { id: params.id },
-          include: { items: true, shipments: true, returns: true },
-        });
-
-        return {
-          ...order,
-          shippingAddress: order.shippingAddress as Record<string, unknown>,
-          paymentDetails: order.paymentDetails as Record<string, unknown> | null,
-          createdAt: order.createdAt.toISOString(),
-          updatedAt: order.updatedAt.toISOString(),
-          items: order.items.map((it) => ({ ...it, createdAt: it.createdAt.toISOString() })),
-          shipments: order.shipments.map((s) => ({
-            ...s,
-            shippedAt: s.shippedAt?.toISOString() ?? null,
-            deliveredAt: s.deliveredAt?.toISOString() ?? null,
-            createdAt: s.createdAt.toISOString(),
-            updatedAt: s.updatedAt.toISOString(),
-          })),
-          returns: order.returns.map((r) => ({
-            ...r,
-            decidedAt: r.decidedAt?.toISOString() ?? null,
-            createdAt: r.createdAt.toISOString(),
-            updatedAt: r.updatedAt.toISOString(),
-          })),
-        };
+        return orderDto(await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude }));
       });
     },
   );
@@ -1140,8 +837,11 @@ export function commerceRoutes(kit: RouteKit): Router {
       tags: ['Earnings'],
       summary: 'List client invoices',
       access: { type: 'permission', permission: 'earnings.read' },
-      query: invoiceListQuerySchema,
-      response: { status: 200, schema: invoicePageSchema },
+      query: paginationQuerySchema.extend({
+        status: z.enum(['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']).optional(),
+        campaignId: z.string().max(100).optional(),
+      }),
+      response: { status: 200, schema: pageOf(invoiceSchema, 'InvoicePage') },
     },
     async ({ query }) => {
       const where: Prisma.InvoiceWhereInput = {};
@@ -1151,8 +851,8 @@ export function commerceRoutes(kit: RouteKit): Router {
       const invoices = await db.invoice.findMany({
         where,
         include: { milestones: true, payments: true },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         ...pageArgs(query),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
 
       return toPage(invoices, query.limit, (inv) => ({
@@ -1325,19 +1025,18 @@ export function commerceRoutes(kit: RouteKit): Router {
       tags: ['Earnings'],
       summary: 'List earnings entries across all streams',
       access: { type: 'permission', permission: 'earnings.read' },
-      query: earningEntryListQuerySchema,
-      response: { status: 200, schema: earningEntryPageSchema },
+      query: paginationQuerySchema.extend({
+        category: z.string().max(100).optional(),
+        campaignId: z.string().max(100).optional(),
+      }),
+      response: { status: 200, schema: pageOf(earningEntrySchema, 'EarningEntryPage') },
     },
     async ({ query }) => {
       const where: Prisma.EarningEntryWhereInput = {};
       if (query.category) where.category = query.category;
       if (query.campaignId) where.campaignId = query.campaignId;
 
-      const entries = await db.earningEntry.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        ...pageArgs(query),
-      });
+      const entries = await db.earningEntry.findMany({ where, ...pageArgs(query), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
       return toPage(entries, query.limit, (e) => ({
         ...e,
         expectedAt: e.expectedAt?.toISOString() ?? null,
