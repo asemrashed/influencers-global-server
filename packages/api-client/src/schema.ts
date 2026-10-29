@@ -1178,6 +1178,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Assign order to a staff member or unassign it
+         * @description Requires permission `orders.write`.
+         */
+        patch: operations["assignOrder"];
+        trace?: never;
+    };
     "/api/v1/orders/{id}/payments": {
         parameters: {
             query?: never;
@@ -1988,6 +2008,46 @@ export interface paths {
          * @description Requires permission `social.read`.
          */
         post: operations["syncSocialAccountFollowers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a file (image, asset, document) to configured storage
+         * @description Requires a fully authenticated session.
+         */
+        post: operations["uploadFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/url/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get signed or public URL for a storage key
+         * @description Requires a fully authenticated session.
+         */
+        get: operations["getFileUrl"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3096,6 +3156,12 @@ export interface components {
             otpauthUrl: string;
             /** @description Manual-entry key */
             secret: string;
+        };
+        UploadFileResponse: {
+            key: string;
+            url: string | null;
+            size: number;
+            mimeType: string;
         };
         User: {
             id: string;
@@ -8736,6 +8802,144 @@ export interface operations {
             };
         };
     };
+    assignOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assignedUserId: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        orderNumber: string;
+                        customerId: string | null;
+                        /** Format: email */
+                        customerEmail: string;
+                        customerName: string;
+                        customerPhone: string | null;
+                        shippingAddress: {
+                            [key: string]: unknown;
+                        };
+                        /** @enum {string} */
+                        status: "PENDING" | "PAID" | "FULFILLED" | "DELIVERED" | "CANCELLED" | "REFUNDED";
+                        /** @enum {string} */
+                        paymentStatus: "UNPAID" | "PAID" | "PARTIALLY_REFUNDED" | "REFUNDED" | "FAILED";
+                        /** @enum {string} */
+                        paymentMethod: "CASH_ON_DELIVERY" | "MANUAL_BANK_TRANSFER" | "OTHER_OFFLINE";
+                        paymentDetails: {
+                            [key: string]: unknown;
+                        } | null;
+                        promoCodeId: string | null;
+                        subtotalCents: number;
+                        discountCents: number;
+                        shippingCents: number;
+                        totalCents: number;
+                        paidCents: number;
+                        refundedCents: number;
+                        assignedUserId: string | null;
+                        items?: {
+                            id: string;
+                            orderId: string;
+                            variantId: string;
+                            title: string;
+                            sku: string;
+                            quantity: number;
+                            unitPriceCents: number;
+                            totalPriceCents: number;
+                            createdAt: string;
+                        }[];
+                        shipments?: {
+                            id: string;
+                            orderId: string;
+                            carrier: string;
+                            trackingNumber: string | null;
+                            status: string;
+                            shippedAt: string | null;
+                            deliveredAt: string | null;
+                            notes: string | null;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        returns?: {
+                            id: string;
+                            orderId: string;
+                            /** @enum {string} */
+                            status: "REQUESTED" | "APPROVED" | "REJECTED" | "RECEIVED" | "RESTOCKED";
+                            reason: string;
+                            restockResellable: boolean;
+                            decisionNotes: string | null;
+                            decidedAt: string | null;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            /** @description Error codes: VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: UNAUTHENTICATED */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, FORBIDDEN, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: RATE_LIMITED */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: INTERNAL */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     recordOrderPayment: {
         parameters: {
             query?: never;
@@ -13183,6 +13387,156 @@ export interface operations {
                 };
             };
             /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, FORBIDDEN, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: RATE_LIMITED */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: INTERNAL */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    filename: string;
+                    mimeType: string;
+                    base64Data: string;
+                    /**
+                     * @default products
+                     * @enum {string}
+                     */
+                    folder?: "products" | "portfolio" | "media-kit" | "drafts" | "avatars";
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadFileResponse"];
+                };
+            };
+            /** @description Error codes: VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: UNAUTHENTICATED */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: RATE_LIMITED */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: INTERNAL */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getFileUrl: {
+        parameters: {
+            query?: {
+                expiresInSeconds?: number;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        key: string;
+                        url: string;
+                    };
+                };
+            };
+            /** @description Error codes: VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: UNAUTHENTICATED */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED */
             403: {
                 headers: {
                     [name: string]: unknown;

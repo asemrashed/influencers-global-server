@@ -15,3 +15,4 @@ export * from './events.js';
 export * from './social.js';
 export * from './commerce.js';
 export * from './ai-automation.js';
+export * from './storage.js';

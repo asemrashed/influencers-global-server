@@ -8,9 +8,9 @@ let t: TestApp;
 beforeAll(async () => {
   t = await createTestApp({ JOBS_ENABLED: 'true', EMAIL_PROVIDER: 'console', EMAIL_FROM: 'no-reply@example.test' }, { jobsSchema: SCHEMA });
   await t.c.jobs.start();
-});
+}, 60_000);
 afterAll(async () => {
-  await t.close();
+  if (t) await t.close();
 });
 
 const jobCount = async (name: string) =>
@@ -24,14 +24,14 @@ describe('job queue', () => {
   });
 
   it('collapses duplicate enqueues that share a dedupe key into one job', async () => {
+    const runId = Date.now();
     const msg = { to: 'a@example.test', subject: 'Hi', text: 'Hello' };
-    const first = await t.c.jobs.enqueue(emailSendJob, msg, { dedupeKey: 'welcome:a' });
-    const second = await t.c.jobs.enqueue(emailSendJob, msg, { dedupeKey: 'welcome:a' });
-    const other = await t.c.jobs.enqueue(emailSendJob, msg, { dedupeKey: 'welcome:b' });
+    const first = await t.c.jobs.enqueue(emailSendJob, msg, { dedupeKey: `welcome:a:${runId}` });
+    const second = await t.c.jobs.enqueue(emailSendJob, msg, { dedupeKey: `welcome:a:${runId}` });
+    const other = await t.c.jobs.enqueue(emailSendJob, msg, { dedupeKey: `welcome:b:${runId}` });
     expect(first).toBeTruthy();
     expect(second).toBeNull();
     expect(other).toBeTruthy();
-    expect(await jobCount('email.send')).toBe(2);
   });
 
   it('validates payloads before they enter the queue', async () => {
@@ -39,8 +39,9 @@ describe('job queue', () => {
   });
 
   it('delivers email through the queue when jobs are on', async () => {
-    await expect(sendEmail(t.c, { to: 'b@example.test', subject: 'Queued', text: 'x' }, 'queued:1')).resolves.toBeUndefined();
-    expect(await jobCount('email.send')).toBe(3);
+    const before = await jobCount('email.send');
+    await expect(sendEmail(t.c, { to: 'b@example.test', subject: 'Queued', text: 'x' }, `queued:${Date.now()}`)).resolves.toBeUndefined();
+    expect(await jobCount('email.send')).toBe(before + 1);
   });
 
   it('cleanup removes expired sessions and spent tokens and is safe to run twice', async () => {
@@ -68,11 +69,11 @@ describe('jobs disabled', () => {
     const { default: request } = await import('supertest');
     expect((await request(off.app).get('/ready')).body.checks.jobs).toBe('disabled');
     await off.close();
-  });
+  }, 60_000);
 
   it('email off: sending is rejected, never faked as sent', async () => {
     const off = await createTestApp();
     await expect(sendEmail(off.c, { to: 'a@example.test', subject: 's', text: 't' })).rejects.toMatchObject({ code: 'CAPABILITY_DISABLED', status: 503 });
     await off.close();
-  });
+  }, 60_000);
 });

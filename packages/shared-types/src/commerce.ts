@@ -301,6 +301,11 @@ export const updateOrderStatusBodySchema = z.object({
 });
 export type UpdateOrderStatusBody = z.infer<typeof updateOrderStatusBodySchema>;
 
+export const assignOrderBodySchema = z.object({
+  assignedUserId: z.string().nullable(),
+});
+export type AssignOrderBody = z.infer<typeof assignOrderBodySchema>;
+
 export const recordOrderPaymentBodySchema = z.object({
   amountCents: z.number().int().positive().max(1_000_000_000),
   paymentMethod: paymentMethodSchema,

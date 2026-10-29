@@ -200,8 +200,11 @@ describe('"assigned" scope covers EVERY order action, not just read', () => {
     ];
     for (const probe of probes) expect((await probe()).status).toBe(404);
     expect((await m.get('/api/v1/orders')).body.items.map((o: { id: string }) => o.id)).not.toContain(order.id);
-    // once assigned to the Manager, the same calls work
-    await t.c.db.order.update({ where: { id: order.id }, data: { assignedUserId: mgr.id } });
+    // Admin assigns the order via the assign endpoint
+    const assignRes = await admin.patch(`/api/v1/orders/${order.id}/assign`, { assignedUserId: mgr.id });
+    expect(assignRes.status).toBe(200);
+    expect(assignRes.body.assignedUserId).toBe(mgr.id);
+    // once assigned to the Manager, the calls now work
     expect((await m.get(`/api/v1/orders/${order.id}`)).status).toBe(200);
     expect((await m.post(`/api/v1/orders/${order.id}/payments`, { amountCents: 100, paymentMethod: 'CASH_ON_DELIVERY' })).status).toBe(200);
   });
