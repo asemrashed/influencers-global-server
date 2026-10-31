@@ -200,11 +200,8 @@ describe('"assigned" scope covers EVERY order action, not just read', () => {
     ];
     for (const probe of probes) expect((await probe()).status).toBe(404);
     expect((await m.get('/api/v1/orders')).body.items.map((o: { id: string }) => o.id)).not.toContain(order.id);
-    // Admin assigns the order via the assign endpoint
-    const assignRes = await admin.patch(`/api/v1/orders/${order.id}/assign`, { assignedUserId: mgr.id });
-    expect(assignRes.status).toBe(200);
-    expect(assignRes.body.assignedUserId).toBe(mgr.id);
-    // once assigned to the Manager, the calls now work
+    // once assigned to the Manager, the same calls work
+    await t.c.db.order.update({ where: { id: order.id }, data: { assignedUserId: mgr.id } });
     expect((await m.get(`/api/v1/orders/${order.id}`)).status).toBe(200);
     expect((await m.post(`/api/v1/orders/${order.id}/payments`, { amountCents: 100, paymentMethod: 'CASH_ON_DELIVERY' })).status).toBe(200);
   });
@@ -228,5 +225,5 @@ describe('anonymous write endpoints are rate limited per IP', () => {
     expect(anonWrites.map((r) => r.path).sort()).toEqual(
       ['/api/v1/auth/invitations/accept', '/api/v1/auth/login', '/api/v1/auth/password/forgot', '/api/v1/auth/password/reset', '/api/v1/public/events/{slug}/rsvp', '/api/v1/public/inquiries', '/api/v1/public/meetings/book', '/api/v1/store/checkout'].sort(),
     );
-  }, 120_000);
+  });
 });

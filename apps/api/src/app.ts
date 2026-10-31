@@ -24,7 +24,6 @@ import { rolesRoutes } from './modules/roles/roles.routes.js';
 import { settingsRoutes } from './modules/settings/settings.routes.js';
 import { socialRoutes } from './modules/social/social.routes.js';
 import { supportRoutes } from './modules/support/support.routes.js';
-import { storageRoutes } from './modules/storage/storage.routes.js';
 import { invitationsRoutes } from './modules/users/invitations.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 
@@ -76,7 +75,6 @@ export function createApp(c: Container): CreatedApp {
     eventsRoutes(kit),
     socialRoutes(kit),
     commerceRoutes(kit),
-    storageRoutes(kit),
     aiRoutes(kit),
   ];
   let cached: Record<string, unknown> | undefined;

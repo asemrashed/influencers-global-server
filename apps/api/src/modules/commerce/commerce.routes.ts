@@ -16,7 +16,6 @@ import {
   orderSchema,
   checkoutBodySchema,
   updateOrderStatusBodySchema,
-  assignOrderBodySchema,
   recordOrderPaymentBodySchema,
   refundOrderBodySchema,
   createShipmentBodySchema,
@@ -633,38 +632,6 @@ export function commerceRoutes(kit: RouteKit): Router {
         }
         return orderDto(await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude }));
       });
-    },
-  );
-
-  route(
-    {
-      method: 'patch',
-      path: '/api/v1/orders/{id}/assign',
-      operationId: 'assignOrder',
-      tags: ['Commerce'],
-      summary: 'Assign order to a staff member or unassign it',
-      access: { type: 'permission', permission: 'orders.write' },
-      params: z.object({ id: z.string() }),
-      body: assignOrderBodySchema,
-      response: { status: 200, schema: orderSchema },
-    },
-    async ({ params, body, scope, auth }) => {
-      const order = await db.order.findUnique({ where: { id: params.id } });
-      if (!order) throw errors.notFound('Order');
-      assertOrderInScope(scope, order, auth.user.id);
-
-      if (body.assignedUserId) {
-        const user = await db.user.findUnique({ where: { id: body.assignedUserId } });
-        if (!user || user.status !== 'ACTIVE') throw errors.validation([{ path: 'assignedUserId', message: 'User not found or inactive' }]);
-      }
-
-      const updated = await db.order.update({
-        where: { id: params.id },
-        data: { assignedUserId: body.assignedUserId },
-        include: orderInclude,
-      });
-
-      return orderDto(updated);
     },
   );
 
