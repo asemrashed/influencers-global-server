@@ -23,6 +23,7 @@ import { profileRoutes } from './modules/profile/profile.routes.js';
 import { rolesRoutes } from './modules/roles/roles.routes.js';
 import { settingsRoutes } from './modules/settings/settings.routes.js';
 import { socialRoutes } from './modules/social/social.routes.js';
+import { storageRoutes } from './modules/storage/storage.routes.js';
 import { supportRoutes } from './modules/support/support.routes.js';
 import { invitationsRoutes } from './modules/users/invitations.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
@@ -75,6 +76,7 @@ export function createApp(c: Container): CreatedApp {
     eventsRoutes(kit),
     socialRoutes(kit),
     commerceRoutes(kit),
+    storageRoutes(kit),
     aiRoutes(kit),
   ];
   let cached: Record<string, unknown> | undefined;
@@ -109,6 +111,7 @@ export function createApp(c: Container): CreatedApp {
   app.use(noStore);
   app.use('/api', createLimiter(c, c.env.RATE_LIMIT_GLOBAL_PER_MIN, 'global'));
   app.use(cookieParser());
+  app.use('/api/v1/storage/upload', express.json({ limit: '15mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(originGuard(c));
   app.use(sessionLoader(c));

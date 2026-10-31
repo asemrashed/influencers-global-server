@@ -16,6 +16,7 @@ import { routeFactory, type RouteKit } from '../../lib/route.js';
 import { scopeWhere, withScope } from '../../lib/scope.js';
 import { sanitizeRichText } from '../../lib/sanitize.js';
 import { errors } from '../../lib/errors.js';
+import { sendNotificationEmail } from '../../lib/notifications.js';
 
 export function supportRoutes(kit: RouteKit): Router {
   const c = kit.c;
@@ -255,6 +256,26 @@ export function supportRoutes(kit: RouteKit): Router {
 
         return rep;
       });
+
+      // Send email notification for ticket reply if email is configured
+      // If staff replied, notify requester. If requester/customer replied, notify assigned user or requester
+      const recipient = isStaffUser
+        ? ticket.requesterEmail
+        : (ticket.assignedUserId
+            ? (await c.db.user.findUnique({ where: { id: ticket.assignedUserId }, select: { email: true } }))?.email
+            : null) ?? ticket.requesterEmail;
+
+      if (recipient && recipient !== auth.user.email) {
+        await sendNotificationEmail(
+          c,
+          {
+            to: recipient,
+            subject: `New reply on ticket #${ticket.ticketNumber}: ${ticket.subject}`,
+            text: `${auth.user.name} wrote:\n\n${cleanMessage}`,
+          },
+          `notif:ticket-reply:${reply.id}`,
+        );
+      }
 
       return {
         id: reply.id,

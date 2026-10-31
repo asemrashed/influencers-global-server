@@ -22,6 +22,7 @@ import { routeFactory, type RouteKit } from '../../lib/route.js';
 import { scopeWhere, withScope } from '../../lib/scope.js';
 import { sanitizeRichText } from '../../lib/sanitize.js';
 import { errors } from '../../lib/errors.js';
+import { getSuperAdminEmail, sendNotificationEmail } from '../../lib/notifications.js';
 
 export function inboxRoutes(kit: RouteKit): Router {
   const c = kit.c;
@@ -92,6 +93,21 @@ export function inboxRoutes(kit: RouteKit): Router {
       });
 
       await fireWorkflowsSafely(c, 'INBOX_MESSAGE_RECEIVED', { threadId, senderEmail: body.email.toLowerCase(), subject: body.subject });
+
+      // Notify Super Admin of new inquiry if email is configured
+      const superAdminEmail = await getSuperAdminEmail(c);
+      if (superAdminEmail) {
+        await sendNotificationEmail(
+          c,
+          {
+            to: superAdminEmail,
+            subject: `New Inquiry: ${body.subject}`,
+            text: `You received a new inquiry from ${body.name} (${body.email.toLowerCase()}):\n\n${cleanMessage}`,
+          },
+          `notif:inquiry:${threadId}`,
+        );
+      }
+
       return { ok: true as const };
     },
   );

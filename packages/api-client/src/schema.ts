@@ -1994,6 +1994,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/storage/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a file (image, asset, document) to configured storage
+         * @description Requires a fully authenticated session.
+         */
+        post: operations["uploadFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/url/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get signed or download URL for a storage key
+         * @description Requires a fully authenticated session.
+         */
+        get: operations["getFileUrl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/store/categories": {
         parameters: {
             query?: never;
@@ -3096,6 +3136,12 @@ export interface components {
             otpauthUrl: string;
             /** @description Manual-entry key */
             secret: string;
+        };
+        UploadFileResponse: {
+            key: string;
+            url: string | null;
+            size: number;
+            mimeType: string;
         };
         User: {
             id: string;
@@ -13183,6 +13229,156 @@ export interface operations {
                 };
             };
             /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, FORBIDDEN, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: RATE_LIMITED */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: INTERNAL */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    filename: string;
+                    mimeType: string;
+                    base64Data: string;
+                    /**
+                     * @default products
+                     * @enum {string}
+                     */
+                    folder?: "products" | "portfolio" | "media-kit" | "drafts" | "avatars";
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadFileResponse"];
+                };
+            };
+            /** @description Error codes: VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: UNAUTHENTICATED */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED, CSRF_INVALID, ORIGIN_NOT_ALLOWED */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: RATE_LIMITED */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: INTERNAL */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getFileUrl: {
+        parameters: {
+            query?: {
+                expiresInSeconds?: number;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        key: string;
+                        url: string;
+                    };
+                };
+            };
+            /** @description Error codes: VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: UNAUTHENTICATED */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error codes: TWO_FACTOR_REQUIRED, TWO_FACTOR_SETUP_REQUIRED */
             403: {
                 headers: {
                     [name: string]: unknown;

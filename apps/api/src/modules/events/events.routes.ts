@@ -29,6 +29,7 @@ import { routeFactory, type RouteKit } from '../../lib/route.js';
 import { scopeWhere, withScope } from '../../lib/scope.js';
 import { sanitizeRichText } from '../../lib/sanitize.js';
 import { errors } from '../../lib/errors.js';
+import { sendNotificationEmail } from '../../lib/notifications.js';
 
 export function eventsRoutes(kit: RouteKit): Router {
   const c = kit.c;
@@ -139,6 +140,17 @@ export function eventsRoutes(kit: RouteKit): Router {
 
         return created;
       });
+
+      // Send event RSVP confirmation email if email is configured
+      await sendNotificationEmail(
+        c,
+        {
+          to: rsvp.guestEmail,
+          subject: `RSVP Confirmation: ${event.title}`,
+          text: `Hi ${rsvp.guestName},\n\nYour RSVP for ${event.title} has been received with status: ${rsvp.status}.\nYour ticket code: ${rsvp.ticketCode}\n\nWe look forward to seeing you!`,
+        },
+        `notif:rsvp:${rsvp.id}`,
+      );
 
       return {
         id: rsvp.id,

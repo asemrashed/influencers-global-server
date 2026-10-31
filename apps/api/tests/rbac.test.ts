@@ -169,7 +169,10 @@ describe('Super Admin protection', () => {
       a.put(`/api/v1/users/${bId}/roles`, { roleIds: [admin] }),
       b.put(`/api/v1/users/${aId}/roles`, { roleIds: [admin] }),
     ]);
-    expect([r1.status, r2.status].sort()).toEqual([200, 409]);
+    // Exactly one demotion succeeds (200); the loser either gets 409 (LAST_SUPER_ADMIN) or 403 (was just demoted)
+    const statuses = [r1.status, r2.status];
+    expect(statuses).toContain(200);
+    expect(statuses.some((s) => s === 409 || s === 403)).toBe(true);
     expect(await t.c.db.user.count({ where: { status: 'ACTIVE', roles: { some: { role: { isLocked: true } } } } })).toBe(1);
   });
 });

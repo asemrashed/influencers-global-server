@@ -15,6 +15,7 @@ import { pageArgs, toPage } from '../../lib/pagination.js';
 import { routeFactory, type RouteKit } from '../../lib/route.js';
 import { scopeWhere, withScope } from '../../lib/scope.js';
 import { errors } from '../../lib/errors.js';
+import { getSuperAdminEmail, sendNotificationEmail } from '../../lib/notifications.js';
 
 export function meetingsRoutes(kit: RouteKit): Router {
   const c = kit.c;
@@ -100,6 +101,20 @@ export function meetingsRoutes(kit: RouteKit): Router {
           assignedUserId: body.assignedUserId,
         },
       });
+
+      // Notify Super Admin of new booking request if email is configured
+      const superAdminEmail = await getSuperAdminEmail(c);
+      if (superAdminEmail) {
+        await sendNotificationEmail(
+          c,
+          {
+            to: superAdminEmail,
+            subject: `New Booking: ${meeting.title}`,
+            text: `A new meeting has been booked by ${meeting.guestName} (${meeting.guestEmail}) from ${start.toISOString()} to ${end.toISOString()}.`,
+          },
+          `notif:booking:${meeting.id}`,
+        );
+      }
 
       return {
         id: meeting.id,
